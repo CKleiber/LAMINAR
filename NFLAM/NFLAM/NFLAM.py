@@ -26,7 +26,7 @@ class NFLAM():
     def _train(self,
               data: torch.Tensor,
               optimizer: torch.optim.Optimizer,
-              epochs: int = 1,
+              epochs: int = 100,
               batch_size: int = 128,
               patience: int = 5,
               verbose: bool = True
@@ -77,10 +77,11 @@ class NFLAM():
             cov_matrix = np.cov(neighbours.T)
             self.cov_matrices.append(cov_matrix)
 
+        self.cov_matrices = np.array(self.cov_matrices)
         self.cov_matrices = torch.tensor(self.cov_matrices, dtype=torch.float32).to(self.device)
 
         self.distance_matrix = torch.zeros(self.grid_pushed.shape[0], self.grid_pushed.shape[0]).to(self.device)
-        # set everythin to infinity
+        # set everything to infinity
         self.distance_matrix.fill_(float('inf'))
 
         for i in range(self.grid_pushed.shape[0]):
@@ -89,9 +90,12 @@ class NFLAM():
                     continue
 
                 common_cov = 0.5 * (self.cov_matrices[i] + self.cov_matrices[neighbour_idx])
+                
+                # add a small value to the diagonal to avoid singular matrices
+                common_cov += torch.eye(common_cov.shape[0]) * 1e-5
 
-                x_i = self.grid_pushed[i]
-                x_j = self.grid_pushed[neighbour_idx]
+                x_i = self.grid_pushed[i].reshape(-1, 1)
+                x_j = self.grid_pushed[neighbour_idx].reshape(-1, 1)
 
                 cov_det = torch.det(common_cov) ** 1/self.d
 
@@ -99,7 +103,7 @@ class NFLAM():
                 
                 self.distance_matrix[i, neighbour_idx] = mahalanobis_distance
                 self.distance_matrix[neighbour_idx, i] = mahalanobis_distance
-
+    '''
     def _update_distance_matrix(self, 
                                 x: torch.Tensor,
                                 x_neighbours: np.ndarray,
@@ -112,27 +116,34 @@ class NFLAM():
         updated_distance_matrix = torch.zeros(self.grid_pushed.shape[0] + 2, self.grid_pushed.shape[0] + 2).to(self.device)
         updated_distance_matrix.fill_(float('inf'))
 
+        x_cov = np.cov(self.grid[x_neighbours[0]].cpu().detach().numpy().T)
+        y_cov = np.cov(self.grid[y_neighbours[0]].cpu().detach().numpy().T)
+
+        updated_cov_matrices = torch.cat([self.cov_matrices, torch.tensor(np.array([x_cov, y_cov]), dtype=torch.float32).to(self.device)], dim=0)
+
         # fill in the old distance matrix
         updated_distance_matrix[:self.grid_pushed.shape[0], :self.grid_pushed.shape[0]] = self.distance_matrix
 
-        for i in range(updated_distance_matrix.shape[0]-2, updated_distance_matrix.shape[0]):
+        for i in range(self.grid_pushed.shape[0], self.grid_pushed.shape[0]+2):
             for j in neighbours[i-self.distance_matrix.shape[0]][0]:
-                print(i, j)
                 if updated_distance_matrix[i, j] != float('inf'):  # if the distance has already been calculated, skip
                     continue
-                common_cov = 0.5 * (self.cov_matrices[i] + self.cov_matrices[j])
+                common_cov = 0.5 * (updated_cov_matrices[i] + updated_cov_matrices[j])
 
-                x_i = updated_grid_pushed[i]
-                x_j = updated_grid_pushed[j]
+                # add a small value to the diagonal to avoid singular matrices
+                common_cov += torch.eye(common_cov.shape[0]) * 1e-5
+
+                x_i = updated_grid_pushed[i].reshape(-1, 1)
+                x_j = updated_grid_pushed[j].reshape(-1, 1)
 
                 cov_det = torch.det(common_cov) ** 1/self.d
-
+                
                 mahalanobis_distance = torch.sqrt(cov_det * (x_i - x_j).T @ torch.inverse(common_cov) @ (x_i - x_j))
                 
                 updated_distance_matrix[i, j] = mahalanobis_distance
                 updated_distance_matrix[j, i] = mahalanobis_distance
 
-        return updated_distance_matrix
+        return updated_distance_matrix'''
        
     def distance(self,
                  x: torch.Tensor,
@@ -146,10 +157,70 @@ class NFLAM():
         _, x_idx = kdtree.query(x.cpu().detach().numpy(), k=self.k_neighbours)
         _, y_idx = kdtree.query(y.cpu().detach().numpy(), k=self.k_neighbours)
 
+        points = torch.cat([x, y], dim=0)
+        points_neighbours = np.array([x_idx, y_idx])
+
         # update the distance matrix with the new points
-        updated_distance_matrix = self._update_distance_matrix(x, x_idx, y, y_idx)
+        updated_distance_matrix = self._update_distance_matrix(points, points_neighbours)
 
         # find the distance of the shortest path between x and y
         dist = shortest_path(updated_distance_matrix.cpu().detach().numpy(), indices=[self.distance_matrix.shape[0]], method='D', directed=False)
         return dist[0, -1]
-        
+    
+    def _update_distance_matrix(self, 
+                                x: torch.Tensor,
+                                x_neighbours: list[np.ndarray]):
+    
+        updated_grid_pushed = torch.cat([self.grid_pushed, x], dim=0)
+
+        updated_distance_matrix = torch.zeros(self.grid_pushed.shape[0] + x.shape[0], self.grid_pushed.shape[0] + x.shape[0]).to(self.device)
+        updated_distance_matrix.fill_(float('inf'))
+
+        new_covs = []
+        for i in range(x.shape[0]):
+            new_covs.append(np.cov(self.grid[x_neighbours[i][0]].cpu().detach().numpy().T))
+
+        updated_cov_matrices = torch.cat([self.cov_matrices, torch.tensor(np.array(new_covs), dtype=torch.float32).to(self.device)], dim=0)
+
+        # fill in the old distance matrix
+        updated_distance_matrix[:self.grid_pushed.shape[0], :self.grid_pushed.shape[0]] = self.distance_matrix
+
+        for i in range(self.grid_pushed.shape[0], self.grid_pushed.shape[0] + x.shape[0]):
+            for j in x_neighbours[i-self.distance_matrix.shape[0]][0]:
+                if updated_distance_matrix[i, j] != float('inf'):  # if the distance has already been calculated, skip
+                    continue
+                common_cov = 0.5 * (updated_cov_matrices[i] + updated_cov_matrices[j])
+
+                # add a small value to the diagonal to avoid singular matrices
+                common_cov += torch.eye(common_cov.shape[0]) * 1e-5
+                
+                x_i = updated_grid_pushed[i].reshape(-1, 1)
+                x_j = updated_grid_pushed[j].reshape(-1, 1)
+
+                cov_det = torch.det(common_cov) ** 1/self.d
+                
+                mahalanobis_distance = torch.sqrt(cov_det * (x_i - x_j).T @ torch.inverse(common_cov) @ (x_i - x_j))
+                
+                updated_distance_matrix[i, j] = mahalanobis_distance
+                updated_distance_matrix[j, i] = mahalanobis_distance
+
+        return updated_distance_matrix
+    
+    def distances_to_point(self,
+                          x: torch.Tensor):
+        # push x through the model
+        x = self.flow.transform(x)
+
+        # find the nearest neighbour in the grid for x
+        kdtree = KDTree(self.grid_pushed.cpu().detach().numpy())
+        _, x_idx = kdtree.query(x.cpu().detach().numpy(), k=self.k_neighbours)
+
+        points = x
+        points_neighbours = [x_idx]
+
+        # update the distance matrix with the new points
+        updated_distance_matrix = self._update_distance_matrix(points, points_neighbours)
+
+        # find the distances between the point and every other point in the grid
+        d_grid = dijkstra(updated_distance_matrix.cpu().detach().numpy(), indices=[-1], return_predecessors=False, unweighted=True)
+        return self.grid, d_grid[0, :-1]
