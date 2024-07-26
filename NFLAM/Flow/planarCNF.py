@@ -181,7 +181,7 @@ def train_PlanarCNF(
 
         # early stopping
         if epoch > patience:
-            if loss_history[-patience] < min(loss_history):
+            if loss_history[-patience] < loss_history[-1]:
                 break
 
     return loss_history

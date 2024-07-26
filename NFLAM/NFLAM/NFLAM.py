@@ -5,6 +5,7 @@ from typing import Union
 from scipy.spatial import KDTree
 from scipy.sparse.csgraph import shortest_path, dijkstra
 from NFLAM.Flow.planarCNF import PlanarCNF, train_PlanarCNF
+from NFLAM.utils.dijkstra import dijkstra as dijkstra_np
 
 # ALSO ADD SAVE FUNCTIONALITY TO THE MODEL
 class NFLAM():
@@ -26,7 +27,7 @@ class NFLAM():
     def _train(self,
               data: torch.Tensor,
               optimizer: torch.optim.Optimizer,
-              epochs: int = 100,
+              epochs: int = 1,
               batch_size: int = 128,
               patience: int = 5,
               verbose: bool = True
@@ -46,6 +47,9 @@ class NFLAM():
         # find the range of each dimension
         ranges = max_vals - min_vals
         num_points = [int(resolution * r) for r in ranges]
+
+        # if num_points is 0, set it to 1
+        num_points = [1 if n == 0 else n for n in num_points]   
 
         # create a multidimensional grid with the respective resolutions
         grid = torch.meshgrid([torch.linspace(min_vals[i], max_vals[i], num_points[i]) for i in range(dim)])
@@ -103,47 +107,6 @@ class NFLAM():
                 
                 self.distance_matrix[i, neighbour_idx] = mahalanobis_distance
                 self.distance_matrix[neighbour_idx, i] = mahalanobis_distance
-    '''
-    def _update_distance_matrix(self, 
-                                x: torch.Tensor,
-                                x_neighbours: np.ndarray,
-                                y: torch.Tensor,
-                                y_neighbours: np.ndarray):
-        neighbours = [x_neighbours, y_neighbours]
-
-        updated_grid_pushed = torch.cat([self.grid_pushed, x, y], dim=0)
-
-        updated_distance_matrix = torch.zeros(self.grid_pushed.shape[0] + 2, self.grid_pushed.shape[0] + 2).to(self.device)
-        updated_distance_matrix.fill_(float('inf'))
-
-        x_cov = np.cov(self.grid[x_neighbours[0]].cpu().detach().numpy().T)
-        y_cov = np.cov(self.grid[y_neighbours[0]].cpu().detach().numpy().T)
-
-        updated_cov_matrices = torch.cat([self.cov_matrices, torch.tensor(np.array([x_cov, y_cov]), dtype=torch.float32).to(self.device)], dim=0)
-
-        # fill in the old distance matrix
-        updated_distance_matrix[:self.grid_pushed.shape[0], :self.grid_pushed.shape[0]] = self.distance_matrix
-
-        for i in range(self.grid_pushed.shape[0], self.grid_pushed.shape[0]+2):
-            for j in neighbours[i-self.distance_matrix.shape[0]][0]:
-                if updated_distance_matrix[i, j] != float('inf'):  # if the distance has already been calculated, skip
-                    continue
-                common_cov = 0.5 * (updated_cov_matrices[i] + updated_cov_matrices[j])
-
-                # add a small value to the diagonal to avoid singular matrices
-                common_cov += torch.eye(common_cov.shape[0]) * 1e-5
-
-                x_i = updated_grid_pushed[i].reshape(-1, 1)
-                x_j = updated_grid_pushed[j].reshape(-1, 1)
-
-                cov_det = torch.det(common_cov) ** 1/self.d
-                
-                mahalanobis_distance = torch.sqrt(cov_det * (x_i - x_j).T @ torch.inverse(common_cov) @ (x_i - x_j))
-                
-                updated_distance_matrix[i, j] = mahalanobis_distance
-                updated_distance_matrix[j, i] = mahalanobis_distance
-
-        return updated_distance_matrix'''
        
     def distance(self,
                  x: torch.Tensor,
@@ -216,11 +179,38 @@ class NFLAM():
         _, x_idx = kdtree.query(x.cpu().detach().numpy(), k=self.k_neighbours)
 
         points = x
-        points_neighbours = [x_idx]
+        points_neighbours = np.array([x_idx])
 
         # update the distance matrix with the new points
         updated_distance_matrix = self._update_distance_matrix(points, points_neighbours)
 
         # find the distances between the point and every other point in the grid
-        d_grid = dijkstra(updated_distance_matrix.cpu().detach().numpy(), indices=[-1], return_predecessors=False, unweighted=True)
+        d_grid = dijkstra(updated_distance_matrix.cpu().detach().numpy(), indices=[-1], return_predecessors=False)
         return self.grid, d_grid[0, :-1]
+    
+    def _generate_metric_function(self,
+                                  data: torch.Tensor) -> callable:
+        
+        # get grid neighbours of each data point
+        kdtree = KDTree(self.grid_pushed.cpu().detach().numpy())
+
+        pushed_data = self.flow.transform(data)
+        _, indices = kdtree.query(pushed_data.cpu().detach().numpy(), k=self.k_neighbours)
+        # reshape the entires of indices to an array of shape (1, 20)
+        indices = np.array([indices])
+        indices = indices.reshape(data.shape[0], 1,  self.k_neighbours)
+
+        updated_distance_matrix = self._update_distance_matrix(data, indices).cpu().detach().numpy()
+
+        def metric(x: torch.Tensor,
+                   y: torch.Tensor) -> float:
+            # find indices of x and y in the data
+            total_indices = data.shape[0]
+            x_idx = (torch.where((data == x).all(dim=1))[0] - total_indices + updated_distance_matrix.shape[0]).item()
+            y_idx = (torch.where((data == y).all(dim=1))[0] - total_indices + updated_distance_matrix.shape[0]).item()
+
+            print(data[x_idx-self.grid.shape[0]], data[y_idx-self.grid.shape[0]])
+            return dijkstra_np(updated_distance_matrix, x_idx, y_idx)
+        
+        return metric
+            
