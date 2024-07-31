@@ -12,7 +12,7 @@ build-backend = "setuptools.build_meta"
 # a variety of build tools. Notably, the version specified here is the
 # single source of truth for LAMINAR's version
 [project]
-name = "LAMINAR"
+name = "laminar_learn"
 description = "Add short description here"
 readme = "README.md"
 maintainers = [
