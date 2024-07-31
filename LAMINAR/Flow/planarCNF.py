@@ -104,7 +104,7 @@ class PlanarCNF(nn.Module):
     # forward pass of the planar CNF
     def forward(self,
                 t: torch.Tensor,
-                states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+                states: torch.Tensor) -> tuple:
         '''
         t: torch.Tensor         - time parameter for the forward pass
         states: torch.Tensor    - input tensor for the forward pass, containing the states z and the log probability of z
