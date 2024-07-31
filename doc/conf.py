@@ -7,7 +7,7 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'NFLAM'
+project = 'laminar_learn'
 copyright = '2024, Christian Kleiber'
 author = 'Christian Kleiber'
 

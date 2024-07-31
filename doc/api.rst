@@ -5,5 +5,5 @@ User API
 
 This is an example function:
 
-.. automodule:: NFLAM
+.. automodule:: LAMINAR
     :members:
