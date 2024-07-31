@@ -1,10 +1,10 @@
 This is an explanation of the file structure that the cookiecutter generated for you:
 
 * Python source files:
-  * The Python package source files are located in the `NFLAM` directory.
-  * `tests/test_NFLAM.py` contains the unit tests for the package.
+  * The Python package source files are located in the `LAMINAR` directory.
+  * `tests/test_LAMINAR.py` contains the unit tests for the package.
   * `tests/conftest.py` contains testing setup and configuration for `pytest`
-  * The `notebooks` directory contains an example Jupyter notebook on how to use `NFLAM`.
+  * The `notebooks` directory contains an example Jupyter notebook on how to use `LAMINAR`.
     This notebook is always executed during `pytest` execution and it is automatically
     rendered into the Sphinx documentation.
 * Markdown files with meta information on the project. [Markdown](https://www.markdownguide.org/basic-syntax/) is

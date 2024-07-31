@@ -1,6 +1,6 @@
 from .Flow import *
 from .utils import *
-from .NFLAM import *
+from .LAMINAR import *
 
 
 from importlib import metadata

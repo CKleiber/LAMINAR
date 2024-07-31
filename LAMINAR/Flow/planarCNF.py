@@ -6,9 +6,17 @@ from torch.utils.data import DataLoader
 from torchdiffeq import odeint
 from tqdm import tqdm
 
-from NFLAM.utils.gaussian2uniform import gaussian_to_sphere, sphere_to_gaussian
+from LAMINAR.utils.gaussian2uniform import gaussian_to_sphere, sphere_to_gaussian
 
-# code references?
+'''
+This code was partly taken from Ricky Chen's implementation of the Neural ODEs paper* and modified for our purposes.
+
+GitHub: https://github.com/rtqichen/torchdiffeq/blob/master/examples/cnf.py
+
+*Chen, R. T. Q., Rubanova, Y., Bettencourt, J., & Duvenaud, D. (2019). Neural Ordinary Differential Equations. arXiv. https://arxiv.org/abs/1806.07366.
+'''
+
+
 # define the hypernetwork, generating the time dependent parameters of the planar CNF
 class HyperNetwork(nn.Module):
     def __init__(self,
@@ -17,6 +25,13 @@ class HyperNetwork(nn.Module):
                  width: int = 64,
                  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
                  ):
+        '''
+        in_out_dim: int         - dimensionality of the input and output space
+        hidden_dim: int         - dimensionality of the hidden layer of the MLP
+        width: int              - width of the planar CNF
+        device: torch.device    - device on which the model is trained, either GPU if available or CPU
+        '''
+
         super(HyperNetwork, self).__init__()
 
         self.device = device
@@ -32,6 +47,10 @@ class HyperNetwork(nn.Module):
 
     def forward(self,
                  t: torch.Tensor) -> list[torch.Tensor, torch.Tensor, torch.Tensor]:
+        '''
+        t: torch.Tensor - time parameter for the forward pass
+        '''
+
         # forward pass through the MLP
         parameters = t.reshape(1, 1)
         parameters = torch.tanh(self.fc1(parameters))
@@ -54,25 +73,43 @@ class HyperNetwork(nn.Module):
 # function for calculating the trace of the jacobian w.r.t. z
 def trace_df_dz(f: nn.Module,
                 z: torch.Tensor) -> torch.Tensor:
+    '''
+    f: nn.Module    - function for which the trace of the jacobian w.r.t. z is calculated
+    z: torch.Tensor - input tensor for the function f
+    '''
     sum_diag = 0
     for i in range(z.shape[1]):
        sum_diag += torch.autograd.grad(f[:, i].sum(), z, create_graph=True)[0].contiguous()[:, i].contiguous()
     return sum_diag
 
 
+# actual planar flow model
 class PlanarCNF(nn.Module):
     def __init__(self,
                  in_out_dim: int = 2,
                  hidden_dim: int = 32,
                  width: int = 64,
                  device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+        '''
+        in_out_dim: int         - dimensionality of the input and output space
+        hidden_dim: int         - dimensionality of the hidden layer of the HyperNetwork
+        width: int              - width of the planar CNF
+        device: torch.device    - device on which the model is trained, either GPU if available or CPU
+        '''    
+    
         super(PlanarCNF, self).__init__()
         self.device = device
         self.hypernetwork = HyperNetwork(in_out_dim, hidden_dim, width, device)
 
+    # forward pass of the planar CNF
     def forward(self,
                 t: torch.Tensor,
                 states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        '''
+        t: torch.Tensor         - time parameter for the forward pass
+        states: torch.Tensor    - input tensor for the forward pass, containing the states z and the log probability of z
+        '''
+
         z = states[0]
         logp_z = states[1]
 
@@ -92,9 +129,15 @@ class PlanarCNF(nn.Module):
 
         return (dz_dt, dlogp_z_dt)
 
+    # loss function for the planar CNF
     def loss(self,
              z_t0: torch.Tensor,
              logp_diff_t0: torch.Tensor) -> torch.Tensor:
+        '''
+        z_t0: torch.Tensor          - initial state of the planar CNF
+        logp_diff_t0: torch.Tensor  - log probability of the initial state
+        '''        
+    
         p_z0 = torch.distributions.MultivariateNormal(
             loc=torch.zeros(z_t0.shape[1]).to(self.device),
             covariance_matrix=torch.eye(z_t0.shape[1]).to(self.device))
@@ -102,10 +145,17 @@ class PlanarCNF(nn.Module):
         logp_x = p_z0.log_prob(z_t0) - logp_diff_t0.view(-1)
         return -logp_x.mean(0)
 
+    # transform data to the latent space and vice versa
+    # takes care of time steps and the transformation direction
     def transform(self,
                   data: torch.Tensor,
                   timesteps: int = 50,
                   reverse: bool = False) -> torch.Tensor:
+        '''
+        data: torch.Tensor  - input data to be transformed
+        timesteps: int      - number of time steps for the transformation
+        reverse: bool       - direction of the transformation, either data->latent space or latent space->data
+        '''
 
         if not reverse:  # transform data to gaussian -> sphere
             with torch.no_grad():
@@ -131,8 +181,9 @@ class PlanarCNF(nn.Module):
 
                 z_t = z_t[-1]
         return z_t
-                
-                
+
+
+# train function of the planar CNF    
 def train_PlanarCNF(
         model: PlanarCNF,
         optimizer: optim.Optimizer,
@@ -142,6 +193,16 @@ def train_PlanarCNF(
         patience: int = 5,  # early stopping patience
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         verbose: bool = True) -> list:
+    '''
+    model: PlanarCNF                - model to be trained
+    optimizer: optim.Optimizer      - optimizer for the training process
+    train_loader: DataLoader        - data loader for the training data
+    epochs: int                     - number of epochs for the training
+    batch_size: int                 - batch size for the training
+    patience: int                   - early stopping patience
+    device: torch.device            - device on which the model is trained, either GPU if available or CPU
+    verbose: bool                   - verbosity of the training process
+    '''
     
     loss_history = []
 
@@ -159,6 +220,7 @@ def train_PlanarCNF(
 
             optimizer.zero_grad()
 
+            # solve ode
             z_t, logp_diff_t = odeint(
                 model, 
                 (batch, logp_diff_t1),

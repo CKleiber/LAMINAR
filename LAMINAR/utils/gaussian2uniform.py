@@ -1,6 +1,10 @@
 import torch
 from torch.special import erfinv
 
+'''
+Helper functions for converting points from a gaussian distribution to a uniform distribution
+on the unit sphere and vice versa.
+'''
 
 def gaussian_to_sphere(X):
     # calculate norm of each datapoint

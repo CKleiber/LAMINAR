@@ -1,5 +1,5 @@
-import NFLAM
+import LAMINAR
 
 
 def test_NFLAM():
-    assert NFLAM.add_one(1) == 2
+    assert LAMINAR.add_one(1) == 2

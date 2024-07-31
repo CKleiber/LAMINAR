@@ -1,4 +1,4 @@
-This is the list of copyright holders of NFLAM.
+This is the list of copyright holders of LAMINAR.
 
 For information on the license, see LICENSE.md.
 
