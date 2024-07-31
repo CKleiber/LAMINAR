@@ -4,7 +4,6 @@
 [build-system]
 requires = [
     "setuptools >=61",
-    "torch >=2.3.1",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -18,7 +17,7 @@ readme = "README.md"
 maintainers = [
     { name = "Christian Kleiber", email = "christian.kleiber@stud.uni-heidelberg.de" },
 ]
-version = "0.0.1"
+version = "0.0.2"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 classifiers = [
@@ -27,6 +26,11 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
+    "numpy < 2",
+    "torch",
+    "torchdiffeq",
+    "tqdm",
+    "scipy",
 ]
 
 [project.optional-dependencies]
