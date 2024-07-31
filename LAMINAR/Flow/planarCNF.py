@@ -46,7 +46,7 @@ class HyperNetwork(nn.Module):
         self.fc3 = nn.Linear(hidden_dim, 3 * self.blocksize + width).to(self.device)
 
     def forward(self,
-                 t: torch.Tensor) -> list[torch.Tensor, torch.Tensor, torch.Tensor]:
+                 t: torch.Tensor) -> list:
         '''
         t: torch.Tensor - time parameter for the forward pass
         '''

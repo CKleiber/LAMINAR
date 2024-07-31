@@ -1,4 +1,4 @@
-NFLAM
+LAMINAR
 =====
 
 .. toctree::
