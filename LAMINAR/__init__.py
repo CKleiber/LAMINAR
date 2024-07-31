@@ -3,11 +3,6 @@
 from .LAMINAR import LAMINAR
 
 
-from importlib import metadata
-
-__version__ = metadata.version(__package__)
-del metadata
-
 def add_one(x: int):
     """An example function that increases a number
 
