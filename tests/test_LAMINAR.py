@@ -1,5 +1,6 @@
 import LAMINAR
 import torch
+import numpy as np
 
 import LAMINAR.Flow
 
@@ -30,10 +31,10 @@ def test_LAMINAR():
     # check metric properties:
     
     # build full distance matrix
-    dist_matrix = []
+    dist_matrix = np.zeros((100, 100))
     for i in range(100):
         dist = LAM.distance(i)
-        dist_matrix.append(dist)
+        dist_matrix[i, :] = dist
 
     # symmetry
     assert (dist_matrix == dist_matrix.T).all()
