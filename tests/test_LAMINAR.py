@@ -29,22 +29,24 @@ def test_LAMINAR():
 
     # check metric properties:
     
+    # build full distance matrix
+    dist_matrix = torch.zeros(100, 100)
+    for i in range(100):
+        dist = LAM.distance(i)
+        dist_matrix[i] = dist
+
+    # symmetry
+    assert (dist_matrix == dist_matrix.T).all()
+
+    # positive definiteness
+    assert (dist_matrix.diag() == 0).all()
+    assert (dist_matrix >= 0).all()
+
+    # triangle inequality
     for i in range(100):
         for j in range(100):
-            # positive semi-definite
-            d = LAM.distance(i, j)
-            assert d >= 0
-            if d == 0:
-                assert i == j
-            if i == j:
-                assert d == 0
-
-            # symmetry
-            assert d == LAM.distance(j, i)
-
-            # triangle inequality
             for k in range(100):
-                assert LAM.distance(i, j) <= LAM.distance(i, k) + LAM.distance(k, j)
+                assert dist_matrix[i, j] <= dist_matrix[i, k] + dist_matrix[k, j]
 
     
     # check standardisation
