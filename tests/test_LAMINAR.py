@@ -40,7 +40,7 @@ def test_LAMINAR():
     assert (dist_matrix == dist_matrix.T).all()
 
     # positive definiteness
-    assert (dist_matrix.diag() == 0).all()
+    assert (np.diag(dist_matrix) == 0).all()
     assert (dist_matrix >= 0).all()
 
     # triangle inequality
