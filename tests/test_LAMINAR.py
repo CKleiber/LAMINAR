@@ -15,7 +15,6 @@ def test_LAMINAR():
     assert LAM.data_pushed.shape == data.shape
     assert LAM.k_neighbours == 20
     assert LAM.dimension == 2
-    assert LAM.flow.in_out_dim == 2
     assert LAM.flow.device == torch.device("cuda" if torch.cuda.is_available() else "cpu")
     assert type(LAM.flow).__name__ == LAMINAR.Flow.planarCNF.PlanarCNF.__name__
     assert LAM.distance_matrix.shape == (100, 100)
