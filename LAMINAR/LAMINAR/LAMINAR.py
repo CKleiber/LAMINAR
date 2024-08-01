@@ -96,12 +96,15 @@ class LAMINAR():
 
     # query for the k nearest neighbours
     def query(self,
-              indices: np.ndarray,   # indices of the points to query
+              indices: Union[int, np.ndarray],   # indices of the points to query
               k_neighbours: Union[int, None] = None) -> np.ndarray:
         '''
-        indices: np.ndarray          - indices of the points to query
+        indices: np.ndarray            - indices of the points to query
         k_neighbours: Union[int, None] - number of neighbours to consider; None means the default value of the class is used
         '''
+
+        if isinstance(indices, int):
+            indices = [indices]
         
         if k_neighbours is None:
             k_neighbours = self.k_neighbours

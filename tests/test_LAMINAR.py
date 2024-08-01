@@ -24,8 +24,8 @@ def test_LAMINAR():
     assert min(LAM.loss_history) == min(LAM.loss_history[-5:])
 
     # assert query
-    assert LAM.query(0).shape == (20, 2)
-    assert LAM.query(0, k_neighbours=5).shape == (5, 2)
+    assert LAM.query([0]).shape == (20, 2)
+    assert LAM.query([0], k_neighbours=5).shape == (5, 2)
 
     # check metric properties:
     
