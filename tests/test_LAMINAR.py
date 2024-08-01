@@ -30,10 +30,10 @@ def test_LAMINAR():
     # check metric properties:
     
     # build full distance matrix
-    dist_matrix = torch.zeros(100, 100)
+    dist_matrix = []
     for i in range(100):
         dist = LAM.distance(i)
-        dist_matrix[i] = dist
+        dist_matrix.append(dist)
 
     # symmetry
     assert (dist_matrix == dist_matrix.T).all()
