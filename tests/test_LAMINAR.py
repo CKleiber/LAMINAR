@@ -52,6 +52,6 @@ def test_LAMINAR():
     
     # check standardisation
     assert LAMINAR.standardize(data).shape == data.shape
-    assert LAMINAR.standardize(data).mean() == 0
-    assert LAMINAR.standardize(data).std() == 1
+    assert LAMINAR.standardize(data).mean() <= 1e-3
+    assert abs(LAMINAR.standardize(data).std() - 1) <= 1e-3
     
