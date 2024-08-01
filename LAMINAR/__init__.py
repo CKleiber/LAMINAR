@@ -1,5 +1,5 @@
 #from .Flow import *
-#from .utils import *
+from .utils import standardize
 from .LAMINAR import LAMINAR
 
 
