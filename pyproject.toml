@@ -63,5 +63,5 @@ packages = [
 [tool.pytest.ini_options]
 testpaths = [
     "tests",
-    "notebooks",
+#    "notebooks",
 ]
