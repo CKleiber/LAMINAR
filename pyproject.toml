@@ -56,7 +56,7 @@ docs = [
 # at https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html
 [tool.setuptools]
 packages = [
-    "LAMINAR",
+    "LAMINAR", "LAMINAR.*",
 ]
 
 # The following is the configuration for the pytest test suite
