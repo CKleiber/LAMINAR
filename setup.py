@@ -1,6 +1,3 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
-setup(
-    name='LAMINAR',
-    packages=find_packages(include=['LAMINAR', 'LAMINAR.*']),
-)
+setup()
