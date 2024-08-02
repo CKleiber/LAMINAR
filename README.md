@@ -10,7 +10,7 @@
 The Python package `LAMINAR` can be installed from PyPI:
 
 ```
-python -m pip install LAMINAR
+python -m pip install laminar-learn
 ```
 
 ## Development installation
