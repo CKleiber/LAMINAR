@@ -44,7 +44,7 @@ jobs:
         echo "PWD: $(pwd)"
         ls -la
         python -c "import sys; print(sys.path)"
-        python -c "import my_package; print(my_package.__file__)"
+        python -c "import LAMINAR; print(LAMINAR.__file__)"
     
     - name: Run Python tests
       run: |
