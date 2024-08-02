@@ -1,11 +1,6 @@
 #from .Flow import *
-
-# print current working directory
-import os
-print(os.getcwd())
-
-from .utils import standardize
 from .LAMINAR import LAMINAR
+from .utils import standardize
 
 
 def add_one(x: int):
