@@ -38,6 +38,13 @@ jobs:
     - name: Install Python package
       run: |
         python -m pip install .[tests]
+
+    - name: Debug environment
+      run: |
+        echo "PWD: $(pwd)"
+        ls -la
+        python -c "import sys; print(sys.path)"
+        python -c "import my_package; print(my_package.__file__)"
     
     - name: Run Python tests
       run: |
