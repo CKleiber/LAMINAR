@@ -54,10 +54,10 @@ docs = [
 # The following section contains setuptools-specific configuration
 # options. For a full reference of available options, check the overview
 # at https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html
-[tool.setuptools]
-packages = [
-    "LAMINAR", "LAMINAR.*",
-]
+#[tool.setuptools]
+#packages = [
+#    "LAMINAR",
+#]
 
 # The following is the configuration for the pytest test suite
 [tool.pytest.ini_options]
