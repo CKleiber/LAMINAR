@@ -1,36 +1,33 @@
 import torch
-from torch.special import erfinv
+from scipy.special import gamma, gammainc, gammaincinv
 
 '''
 Helper functions for converting points from a gaussian distribution to a uniform distribution
 on the unit sphere and vice versa.
 '''
 
-def gaussian_to_sphere(X):
-    # calculate norm of each datapoint
-    norms = torch.norm(X, dim=1)
+def gaussian_to_sphere(X: torch.Tensor) -> torch.Tensor:
+    # Convert a multivariate gaussian of any dimension d to a d-dimensional sphere
+    d = X.shape[1]
+    # Compute the norm of each row
+    norm = torch.norm(X, dim=1, keepdim=True)
 
-    # calculate the cdf of the norm
-    cdf = ((0.5 * (1 + torch.erf(norms / torch.sqrt(torch.tensor(2.0)))) - 0.5) * 2)
-    # this cdf is the new radius of the point, the new point is within the unit sphere
-    # NOTE: radius can only be between 0 and 1, so the cdf has to be adjusted to be within this range
+    # compute cdf of each point
+    cdf = gammainc(d/2, norm**2/2) ** (1/d)
 
-    # calculate the new point
-    X_sphere = X / norms[:, None] * cdf[:, None]
-
+    # calculate the new point with the adjusted radius
+    X_sphere = X / norm * cdf
     return X_sphere
 
+def sphere_to_gaussian(X: torch.Tensor) -> torch.Tensor:
+    # Convert a d-dimensional sphere to a multivariate gaussian of any dimension d
+    d = X.shape[1]
+    # Compute the norm of each row
+    norm = torch.norm(X, dim=1, keepdim=True)
 
-def sphere_to_gaussian(X_sphere):
-    # invert the function above to give the original gaussian point
-    # calculate the norm of each point
-    norms = torch.norm(X_sphere, dim=1)
+    # compute cdf of each point
+    inv_cdf = (gammaincinv(d/2, (norm ** d))*2)**0.5
 
-    # calculate the inverse cdf of the norm
-    inv_cdf = erfinv((norms/2 + 0.5)*2 - 1) * torch.sqrt(torch.tensor(2.0))
-    # this inv_cdf is the original radius of the point
-
-    # calculate the original point
-    X = X_sphere / norms[:, None] * inv_cdf[:, None]
-
-    return X
+    # calculate the new point with the adjusted radius
+    X_gaussian = X / norm * inv_cdf
+    return X_gaussian
