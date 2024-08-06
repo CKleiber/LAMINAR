@@ -35,9 +35,9 @@ class LAMINAR():
         self.flow = PlanarCNF(in_out_dim=self.dimension, device=self.device)
         optimizer = torch.optim.Adam(self.flow.parameters(), lr=1e-3)
         # train the flow on data
-        self._train(data, optimizer, epochs=epochs)
+        self._train(self.data, optimizer, epochs=epochs)
         # push the data throught the flow
-        self.data_pushed = self.flow.transform(data)
+        self.data_pushed = self.flow.transform(self.data)
         # generate the distance matrix of the k closest neighbourhoods
         self._generate_distance_matrix()
         
