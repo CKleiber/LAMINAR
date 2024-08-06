@@ -67,9 +67,9 @@ class LAMINAR():
         indices = self.query(range(self.data.shape[0]))
         
         # calculate the covariance of each points neighbours
-        cov_matrices = []
+        cov_matrices = np.zeros((self.data.shape[0], self.dimension, self.dimension))
         for i in range(self.data.shape[0]):
-            cov_matrices.append(np.cov(self.data[indices[i]].cpu().detach().numpy().T))
+            cov_matrices[i] = np.cov(self.data[indices[i]].cpu().detach().numpy().T)
 
         self.cov_matrices = torch.tensor(cov_matrices, dtype=torch.float32).to(self.device)
 
