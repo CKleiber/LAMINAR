@@ -23,13 +23,14 @@ class LAMINAR():
         '''
 
         self.device = device   
-        self.data = data
         self.k_neighbours = k_neighbours
         self.dimension = data.shape[1]
 
         # make data a tensor if it is an array
         if isinstance(data, np.ndarray):
-            self.data = torch.tensor(data, dtype=torch.float32).to(device)
+            data = torch.tensor(data, dtype=torch.float32)
+
+        self.data = data.to(self.device)
 
         # initialize the flow
         self.flow = PlanarCNF(in_out_dim=self.dimension, device=self.device)
