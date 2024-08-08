@@ -161,8 +161,8 @@ class PlanarCNF(nn.Module):
             with torch.no_grad():
                 z_t, _ = odeint(
                     self,
-                    (data, torch.zeros(data.shape[0], 1)),
-                    torch.linspace(1, 0, timesteps).type(torch.float32),
+                    (data, torch.zeros(data.shape[0], 1).to(self.device)),
+                    torch.linspace(1, 0, timesteps).type(torch.float32).to(self.device),
                     atol=1e-5, rtol=1e-5,
                     method='dopri5'
                 )
@@ -173,8 +173,8 @@ class PlanarCNF(nn.Module):
             with torch.no_grad():
                 z_t, _ = odeint(
                     self,
-                    (sphere_to_gaussian(data), torch.zeros(data.shape[0], 1)),
-                    torch.linspace(0, 1, timesteps).type(torch.float32),
+                    (sphere_to_gaussian(data), torch.zeros(data.shape[0], 1).to(self.device)),
+                    torch.linspace(0, 1, timesteps).type(torch.float32).to(self.device),
                     atol=1e-5, rtol=1e-5,
                     method='dopri5'
                 )
