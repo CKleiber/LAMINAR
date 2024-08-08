@@ -167,13 +167,13 @@ class PlanarCNF(nn.Module):
                     method='dopri5'
                 )
 
-                z_t = gaussian_to_sphere(z_t[-1])
+                z_t = gaussian_to_sphere(z_t[-1].detach().cpu()).to(self.device)
 
         else:  # transform sphere->gaussian to data space
             with torch.no_grad():
                 z_t, _ = odeint(
                     self,
-                    (sphere_to_gaussian(data), torch.zeros(data.shape[0], 1).to(self.device)),
+                    (sphere_to_gaussian(data.detach().cpu()).to(self.device), torch.zeros(data.shape[0], 1).to(self.device)),
                     torch.linspace(0, 1, timesteps).type(torch.float32).to(self.device),
                     atol=1e-5, rtol=1e-5,
                     method='dopri5'
