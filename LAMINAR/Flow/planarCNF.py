@@ -183,6 +183,28 @@ class PlanarCNF(nn.Module):
         return z_t
 
 
+# early stopping class for the training process
+class EarlyStopping:
+    def __init__(self, 
+                 patience: int = 5, 
+                 tolerance: float = 0.01):
+        
+        self.patience = patience
+        self.tolerance = tolerance
+        self.best_loss = float('inf')
+
+    def __call__(self, loss: float) -> bool:
+        if loss < self.best_loss:
+            self.best_loss = loss
+            self.counter = 0
+        elif loss > self.best_loss * (1 + self.tolerance):
+            self.counter += 1
+
+        if self.counter >= self.patience:
+            return True
+        return False
+
+
 # train function of the planar CNF    
 def train_PlanarCNF(
         model: PlanarCNF,
@@ -191,6 +213,7 @@ def train_PlanarCNF(
         epochs: int = 100,
         batch_size: int = 128,
         patience: int = 5,  # early stopping patience
+        tolerance: float = 0.01, # early stopping tolerance
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         verbose: bool = True) -> list:
     '''
@@ -210,6 +233,8 @@ def train_PlanarCNF(
     dataloader_train = DataLoader(train_loader, batch_size=batch_size, shuffle=True)
 
     pbar = tqdm(range(epochs), disable=not verbose)
+
+    earlystop = EarlyStopping(patience=patience, tolerance=tolerance)
 
     for epoch in pbar:
         model.train()
@@ -242,8 +267,9 @@ def train_PlanarCNF(
             pbar.set_description(f"Epoch {epoch+1} | Loss: {loss_history[-1]:.4f}")
 
         # early stopping
-        if epoch > patience:
-            if loss_history[-patience] < loss_history[-1]:
-                break
+        if earlystop(loss_history[-1]):
+            if verbose:
+                print(f"Early stopping at epoch {epoch+1}")
+            break
 
     return loss_history
