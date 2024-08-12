@@ -43,18 +43,22 @@ class LAMINAR():
         self.learning_rate = hyperparameters.get('learning_rate', 1e-3)
         self.patience = hyperparameters.get('patience', 10)
         self.tolerance = hyperparameters.get('tolerance', 0.01)
+        self.batch_size = hyperparameters.get('batch_size', 128)
 
         # initialize the flow
         self.flow = PlanarCNF(in_out_dim=self.dimension, hidden_dim=self.hidden_dim, width=self.width, device=self.device)
         optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.learning_rate)
+        
         # train the flow on data
-        self._train(self.data, optimizer, epochs=epochs, patience=self.patience, tolerance=self.tolerance)
+        self._train(self.data, optimizer, epochs=epochs, batch_size=self.batch_size, patience=self.patience, tolerance=self.tolerance)
+        
         # push the data throught the flow
         self.data_pushed = self.flow.transform(self.data, timesteps=self.timesteps)
+        
         # generate the distance matrix of the k closest neighbourhoods
         self._generate_distance_matrix()
-        
 
+    # get p value of the gaussian after the flow
     def p_value(self):
         '''
         Function to calculate the p-value of the pushed data distribution
@@ -88,7 +92,6 @@ class LAMINAR():
         batch_size: int                     - batch size for the training
         patience: int                       - early stopping patience
         verbose: bool                       - verbosity of the training process
-
         '''
         self.loss_history = train_PlanarCNF(self.flow, optimizer, data, epochs, batch_size, patience, tolerance, self.device, verbose)    
 

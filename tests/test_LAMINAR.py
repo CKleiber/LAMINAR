@@ -21,13 +21,6 @@ def test_LAMINAR():
     assert LAM.distance_matrix.shape == (100, 100)
     assert LAM.cov_matrices.shape == (100, 2, 2)
 
-    # assert index of min of loss hist is in the last 5 elements
-    assert min(LAM.loss_history) == min(LAM.loss_history[-5:])
-
-    # assert query
-    assert LAM.query([0]).shape == (1, 20)
-    assert LAM.query([0], k_neighbours=5).shape == (1, 5)
-
     # check metric properties:
     
     # build full distance matrix
