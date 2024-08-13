@@ -37,7 +37,7 @@ class LAMINAR():
         self.data = data.to(self.device)
 
         # hyperparameters for the flow model
-        self.hidden_dim = hyperparameters.get('hidden_dim', 32)
+        self.hidden_dim = hyperparameters.get('hidden_dim', 64)
         self.width = hyperparameters.get('width', 64)
         self.timesteps = hyperparameters.get('timesteps', 50)
         self.learning_rate = hyperparameters.get('learning_rate', 1e-3)
