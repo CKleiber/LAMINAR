@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
 
+from torch.utils.data import DataLoader
 from torchdiffeq import odeint
 from tqdm import tqdm
+from scipy.stats import shapiro
 
 from LAMINAR.utils.gaussian2uniform import gaussian_to_sphere, sphere_to_gaussian
 
@@ -156,6 +157,7 @@ class PlanarCNF(nn.Module):
         timesteps: int      - number of time steps for the transformation
         reverse: bool       - direction of the transformation, either data->latent space or latent space->data
         '''
+        self.eval()
 
         if not reverse:  # transform data to gaussian -> sphere
             with torch.no_grad():
@@ -183,26 +185,24 @@ class PlanarCNF(nn.Module):
         return z_t
 
 
-# early stopping class for the training process
 class EarlyStopping:
     def __init__(self, 
-                 patience: int = 5, 
-                 tolerance: float = 0.01):
+                 patience: int = 15, 
+                 significance: float = 5):
         
         self.patience = patience
-        self.tolerance = tolerance
-        self.best_loss = float('inf')
+        self.significance = significance
 
-    def __call__(self, loss: float) -> bool:
-        if loss < self.best_loss:
-            self.best_loss = loss
-            self.counter = 0
-        elif loss > self.best_loss * (1 + self.tolerance):
-            self.counter += 1
+    def __call__(self, loss_hist: list) -> bool:
+        if len(loss_hist) <= self.patience:
+            return False
+        
+        vals = torch.tensor(loss_hist[-self.patience-1:-1])
+        vals_mean = vals.mean()
+        vals_std = vals.std()
 
-        if self.counter >= self.patience:
+        if loss_hist[-1] > vals_mean + self.significance * vals_std:
             return True
-        return False
 
 
 # train function of the planar CNF    
@@ -212,8 +212,8 @@ def train_PlanarCNF(
         train_loader: DataLoader,
         epochs: int = 100,
         batch_size: int = 128,
-        patience: int = 5,  # early stopping patience
-        tolerance: float = 0.01, # early stopping tolerance
+        patience: int = 15,  # early stopping patience
+        significance: float = 5.0, # early stopping significance
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         verbose: bool = True) -> list:
     '''
@@ -230,14 +230,14 @@ def train_PlanarCNF(
     loss_history = []
 
     model.to(device)
+    model.train()
     dataloader_train = DataLoader(train_loader, batch_size=batch_size, shuffle=True)
 
     pbar = tqdm(range(epochs), disable=not verbose)
 
-    earlystop = EarlyStopping(patience=patience, tolerance=tolerance)
-
+    earlystop = EarlyStopping(patience=patience, significance=significance)
+    
     for epoch in pbar:
-        model.train()
         total_loss = 0
         for i, batch in enumerate(dataloader_train):
             batch = batch.to(device)
@@ -267,7 +267,7 @@ def train_PlanarCNF(
             pbar.set_description(f"Epoch {epoch+1} | Loss: {loss_history[-1]:.4f}")
 
         # early stopping
-        if earlystop(loss_history[-1]):
+        if earlystop(loss_history):
             if verbose:
                 print(f"Early stopping at epoch {epoch+1}")
             break
