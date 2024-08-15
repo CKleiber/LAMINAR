@@ -185,25 +185,40 @@ class PlanarCNF(nn.Module):
         return z_t
 
 
-class EarlyStopping:
-    def __init__(self, 
-                 patience: int = 15, 
-                 significance: float = 5):
-        
-        self.patience = patience
-        self.significance = significance
+#class EarlyStopping:
+#    def __init__(self, 
+#                 patience: int = 15, 
+#                 significance: float = 5):
+#        
+#        self.patience = patience
+#        self.significance = significance
+#
+#    def __call__(self, loss_hist: list) -> bool:
+#        if len(loss_hist) <= self.patience:
+#            return False
+#        
+#        vals = torch.tensor(loss_hist[-self.patience-1:-1])
+#        vals_mean = vals.mean()
+#        vals_std = vals.std()
+#
+#        if loss_hist[-1] > vals_mean + self.significance * vals_std:
+#            return True
 
-    def __call__(self, loss_hist: list) -> bool:
-        if len(loss_hist) <= self.patience:
+class EarlyStopping:
+    def __init__(self, patience: int = 5, p_lim: float = 0.05):
+        self.patience = patience
+        self.p_lim= p_lim
+
+        self.p_hist = []
+
+    def __call__(self, p_val) -> bool:
+        self.p_hist.append(p_val)
+
+        if len(self.p_hist) <= self.patience:
             return False
         
-        vals = torch.tensor(loss_hist[-self.patience-1:-1])
-        vals_mean = vals.mean()
-        vals_std = vals.std()
-
-        if loss_hist[-1] > vals_mean + self.significance * vals_std:
+        if (torch.tensor(self.p_hist[-self.patience:]) > self.p_lim).all():
             return True
-
 
 # train function of the planar CNF    
 def train_PlanarCNF(
@@ -213,7 +228,7 @@ def train_PlanarCNF(
         epochs: int = 100,
         batch_size: int = 128,
         patience: int = 15,  # early stopping patience
-        significance: float = 5.0, # early stopping significance
+        p_lim: float = 0.05, # early stopping significance
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         verbose: bool = True) -> list:
     '''
@@ -235,7 +250,7 @@ def train_PlanarCNF(
 
     pbar = tqdm(range(epochs), disable=not verbose)
 
-    earlystop = EarlyStopping(patience=patience, significance=significance)
+    earlystop = EarlyStopping(patience=patience, p_lim=p_lim)
     
     for epoch in pbar:
         total_loss = 0
@@ -263,11 +278,20 @@ def train_PlanarCNF(
 
         loss_history.append(total_loss / len(dataloader_train))
 
+
+        pushed = sphere_to_gaussian(model.transform(train_loader, reverse=False).detach().cpu())
+        p_value = shapiro(pushed.numpy())[1]
+
         if verbose:
-            pbar.set_description(f"Epoch {epoch+1} | Loss: {loss_history[-1]:.4f}")
+            pbar.set_description(f"Epoch {epoch+1} | Loss: {loss_history[-1]:.4f} | p-value: {p_value:.2E}")
+
+        #if p_value > 0.05:
+        #    if verbose:
+        #        print(f"Early stopping at epoch {epoch+1}")
+        #    break
 
         # early stopping
-        if earlystop(loss_history):
+        if earlystop(p_value):
             if verbose:
                 print(f"Early stopping at epoch {epoch+1}")
             break

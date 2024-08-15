@@ -41,8 +41,8 @@ class LAMINAR():
         self.width = hyperparameters.get('width', 64)
         self.timesteps = hyperparameters.get('timesteps', 50)
         self.learning_rate = hyperparameters.get('learning_rate', 1e-3)
-        self.patience = hyperparameters.get('patience', 15)
-        self.significance = hyperparameters.get('significance', 5.0)
+        self.patience = hyperparameters.get('patience', 5)
+        self.p_lim = hyperparameters.get('p_lim', 5.0)
         self.batch_size = hyperparameters.get('batch_size', 128)
 
         # initialize the flow
@@ -50,7 +50,7 @@ class LAMINAR():
         optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.learning_rate)
         
         # train the flow on data
-        self._train(self.data, optimizer, epochs=epochs, batch_size=self.batch_size, patience=self.patience, significance=self.significance)
+        self._train(self.data, optimizer, epochs=epochs, batch_size=self.batch_size, patience=self.patience, p_lim=self.p_lim)
         
         # push the data throught the flow
         self.data_pushed = self.flow.transform(self.data, timesteps=self.timesteps)
@@ -82,7 +82,7 @@ class LAMINAR():
               epochs: int = 100,
               batch_size: int = 128,
               patience: int = 5,
-              significance: float = 5.0,
+              p_lim: float = 0.05,
               verbose: bool = True
               ):
         '''
@@ -91,10 +91,10 @@ class LAMINAR():
         epochs: int                         - number of epochs for the training
         batch_size: int                     - batch size for the training
         patience: int                       - early stopping patience
-        significance: float                 - significance level for the early stopping
+        p_lim: float                        - p_lim level for the early stopping
         verbose: bool                       - verbosity of the training process
         '''
-        self.loss_history = train_PlanarCNF(self.flow, optimizer, data, epochs, batch_size, patience, significance, self.device, verbose)    
+        self.loss_history = train_PlanarCNF(self.flow, optimizer, data, epochs, batch_size, patience, p_lim, self.device, verbose)    
 
     # function to generate the distance matrix for the neighbourhoods
     def _generate_distance_matrix(self):
