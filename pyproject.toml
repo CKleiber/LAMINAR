@@ -17,7 +17,7 @@ readme = "README.md"
 maintainers = [
     { name = "Christian Kleiber", email = "christian.kleiber@stud.uni-heidelberg.de" },
 ]
-version = "0.3.13"
+version = "0.3.14"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 classifiers = [
