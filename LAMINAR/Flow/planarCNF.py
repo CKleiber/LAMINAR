@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 
 from torch.utils.data import DataLoader
 from torchdiffeq import odeint
@@ -286,7 +287,7 @@ def train_PlanarCNF(
             pushed = sphere_to_gaussian(model.transform(train_loader, reverse=False).detach().cpu())
             try:
                 p_value = multivariate_normality(pushed.cpu().detach().numpy())[1]
-            except 'LinAlgError':
+            except np.linalg.LinAlgError:
                 print('Unable to calculate p-value - Deactive early stopping with p-value monitoring')
                 p_value = 'NaN'
                 bad_p_val = True

@@ -68,8 +68,12 @@ class LAMINAR():
         # calculate the p-value of the data distribution
 
         data = sphere_to_gaussian(self.data_pushed.cpu().detach()).to(self.device)
-        p = multivariate_normality(data.cpu().detach().numpy())[1]
-        
+        try:
+            p = multivariate_normality(data.cpu().detach().numpy())[1]
+        except np.linalg.LinAlgError:
+            print('Unable to calculate p-value')
+            p = 'NaN'
+
         print(f'Henze-Zirkler p-value:\t{p}')
     
         return p 
