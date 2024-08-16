@@ -69,7 +69,7 @@ class LAMINAR():
 
         shapiro_p = []
         for i in range(self.dimension):
-            shapiro_p.append(shapiro(data.cpu().detach().numpy()[i])[1])
+            shapiro_p.append(shapiro(data.cpu().detach().numpy()[:, i])[1])
         
         shapiro_p = combine_pvalues(shapiro_p, method='fisher')[1]
 
