@@ -31,3 +31,7 @@ def sphere_to_gaussian(X: torch.Tensor) -> torch.Tensor:
     # calculate the new point with the adjusted radius
     X_gaussian = X / norm * inv_cdf
     return X_gaussian
+
+
+###########
+# CATCH IF ANYTHING HERE CAUSES INFINITY WITH TF ROUNDING UP; 0.9999 is legit
