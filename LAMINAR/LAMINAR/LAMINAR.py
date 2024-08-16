@@ -5,8 +5,10 @@ from typing import Union
 from scipy.spatial import KDTree
 from scipy.sparse.csgraph import dijkstra
 from scipy.stats import shapiro, combine_pvalues    
+from pingouin import multivariate_normality
 from LAMINAR.Flow.planarCNF import PlanarCNF, train_PlanarCNF
 from LAMINAR.utils.gaussian2uniform import sphere_to_gaussian
+
 
 '''
 Implementation of the LAM algorithm using a normalizing flow to transform the data
@@ -66,16 +68,11 @@ class LAMINAR():
         # calculate the p-value of the data distribution
 
         data = sphere_to_gaussian(self.data_pushed.cpu().detach()).to(self.device)
-
-        shapiro_p = []
-        for i in range(self.dimension):
-            shapiro_p.append(shapiro(data.cpu().detach().numpy()[:, i])[1])
+        p = multivariate_normality(data.cpu().detach().numpy())[1]
         
-        shapiro_p = combine_pvalues(shapiro_p, method='fisher')[1]
-
-        print(f'Fisher combined Shapiro-Wilk p-value:\t{shapiro_p}')
+        print(f'Henze-Zirkler p-value:\t{p}')
     
-        return shapiro_p 
+        return p 
 
     # train function
     def _train(self,
