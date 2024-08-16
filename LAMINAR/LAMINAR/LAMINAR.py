@@ -4,7 +4,7 @@ import numpy as np
 from typing import Union
 from scipy.spatial import KDTree
 from scipy.sparse.csgraph import dijkstra
-from scipy.stats import shapiro, normaltest
+from scipy.stats import shapiro, combine_pvalues    
 from LAMINAR.Flow.planarCNF import PlanarCNF, train_PlanarCNF
 from LAMINAR.utils.gaussian2uniform import sphere_to_gaussian
 
@@ -67,13 +67,15 @@ class LAMINAR():
 
         data = sphere_to_gaussian(self.data_pushed.cpu().detach()).to(self.device)
 
-        _, shapiro_p = shapiro(data.cpu().detach().numpy())
-        #_, normaltest_p = normaltest(data.cpu().detach().numpy())
+        shapiro_p = []
+        for i in range(self.dimension):
+            shapiro_p.append(shapiro(data.cpu().detach().numpy()[i])[1])
+        
+        shapiro_p = combine_pvalues(shapiro_p, method='fisher')[1]
 
-        print(f'Shapiro-Wilk p-value:\t{shapiro_p}')
-        #print(f'Normality test p-value:\t{normaltest_p}')
-
-        return shapiro_p #, normaltest_p
+        print(f'Fisher combined Shapiro-Wilk p-value:\t{shapiro_p}')
+    
+        return shapiro_p 
 
     # train function
     def _train(self,

@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchdiffeq import odeint
 from tqdm import tqdm
-from scipy.stats import shapiro
+from scipy.stats import shapiro, combine_pvalues
 
 from LAMINAR.utils.gaussian2uniform import gaussian_to_sphere, sphere_to_gaussian
 
@@ -278,9 +278,15 @@ def train_PlanarCNF(
 
         loss_history.append(total_loss / len(dataloader_train))
 
-
         pushed = sphere_to_gaussian(model.transform(train_loader, reverse=False).detach().cpu())
-        p_value = shapiro(pushed.numpy())[1]
+        
+        # calculate p-value for every dimension and combine with fisher
+        p = []
+        for i in range(pushed.shape[1]):
+            _, p_value = shapiro(pushed[:, i].numpy())
+            p.append(p_value)
+
+        p_value = combine_pvalues(p, method='fisher')[1]
 
         if verbose:
             pbar.set_description(f"Epoch {epoch+1} | Loss: {loss_history[-1]:.4f} | p-value: {p_value:.2E}")
