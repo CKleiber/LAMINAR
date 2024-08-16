@@ -244,6 +244,8 @@ def train_PlanarCNF(
     verbose: bool                   - verbosity of the training process
     '''
     
+    bad_p_val = False
+
     loss_history = []
 
     model.to(device)
@@ -280,8 +282,14 @@ def train_PlanarCNF(
 
         loss_history.append(total_loss / len(dataloader_train))
 
-        pushed = sphere_to_gaussian(model.transform(train_loader, reverse=False).detach().cpu())
-        p_value = multivariate_normality(pushed.cpu().detach().numpy())[1]
+        if not bad_p_val:
+            pushed = sphere_to_gaussian(model.transform(train_loader, reverse=False).detach().cpu())
+            try:
+                p_value = multivariate_normality(pushed.cpu().detach().numpy())[1]
+            except 'LinAlgError':
+                print('Unable to calculate p-value - Deactive early stopping with p-value monitoring')
+                p_value = 'NaN'
+                bad_p_val = True
 
         if verbose:
             pbar.set_description(f"Epoch {epoch+1} | Loss: {loss_history[-1]:.4f} | p-value: {p_value:.2E}")
@@ -292,9 +300,10 @@ def train_PlanarCNF(
         #    break
 
         # early stopping
-        if earlystop(p_value):
-            if verbose:
-                print(f"Early stopping at epoch {epoch+1}")
-            break
+        if not bad_p_val:
+            if earlystop(p_value):
+                if verbose:
+                    print(f"Early stopping at epoch {epoch+1}")
+                break
 
     return loss_history
