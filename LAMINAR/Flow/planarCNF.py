@@ -286,7 +286,11 @@ def train_PlanarCNF(
         if not bad_p_val:
             pushed = sphere_to_gaussian(model.transform(train_loader, reverse=False).detach().cpu())
             try:
-                p_value = multivariate_normality(pushed.cpu().detach().numpy())[1]
+                if model.in_out_dim >= 2:
+                    p_value = multivariate_normality(pushed.cpu().detach().numpy())[1]
+                else:
+                    p_value = shapiro(pushed.cpu().detach().numpy())[1]
+                    
             except np.linalg.LinAlgError:
                 print('Unable to calculate p-value - Deactive early stopping with p-value monitoring')
                 p_value = 0.0

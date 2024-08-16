@@ -69,7 +69,10 @@ class LAMINAR():
 
         data = sphere_to_gaussian(self.data_pushed.cpu().detach()).to(self.device)
         try:
-            p = multivariate_normality(data.cpu().detach().numpy())[1]
+            if self.dimension >= 2:
+                p = multivariate_normality(data.cpu().detach().numpy())[1]
+            else:
+                p = shapiro(data.cpu().detach().numpy())[1]        
         except np.linalg.LinAlgError:
             print('Unable to calculate p-value')
             p = 0.0
