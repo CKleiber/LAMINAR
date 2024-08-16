@@ -289,7 +289,7 @@ def train_PlanarCNF(
                 p_value = multivariate_normality(pushed.cpu().detach().numpy())[1]
             except np.linalg.LinAlgError:
                 print('Unable to calculate p-value - Deactive early stopping with p-value monitoring')
-                p_value = 'NaN'
+                p_value = 0.0
                 bad_p_val = True
 
         if verbose:

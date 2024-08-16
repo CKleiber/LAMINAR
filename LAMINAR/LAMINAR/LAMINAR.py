@@ -72,7 +72,7 @@ class LAMINAR():
             p = multivariate_normality(data.cpu().detach().numpy())[1]
         except np.linalg.LinAlgError:
             print('Unable to calculate p-value')
-            p = 'NaN'
+            p = 0.0
 
         print(f'Henze-Zirkler p-value:\t{p}')
     
