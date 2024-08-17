@@ -25,13 +25,16 @@ def sphere_to_gaussian(X: torch.Tensor) -> torch.Tensor:
     # Compute the norm of each row
     norm = torch.norm(X, dim=1, keepdim=True)
 
+    # check if any norm is 1 and set to 0.9999 to avoid infinities
+    if torch.any(norm == 1):
+        norm_new = torch.where(norm == 1, torch.tensor([0.9999]), norm)
+
+        X = X / norm * norm_new
+        norm = norm_new
+
     # compute cdf of each point
     inv_cdf = (gammaincinv(d/2, (norm ** d))*2)**0.5
 
     # calculate the new point with the adjusted radius
     X_gaussian = X / norm * inv_cdf
     return X_gaussian
-
-
-###########
-# CATCH IF ANYTHING HERE CAUSES INFINITY WITH TF ROUNDING UP; 0.9999 is legit
