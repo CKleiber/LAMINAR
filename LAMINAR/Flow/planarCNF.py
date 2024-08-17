@@ -222,6 +222,8 @@ class EarlyStopping:
         
         if (torch.tensor(self.p_hist[-self.patience:]) > self.p_lim).all():
             return True
+        else:
+            return False
 
 # train function of the planar CNF    
 def train_PlanarCNF(
