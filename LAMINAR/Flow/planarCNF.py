@@ -286,7 +286,7 @@ def train_PlanarCNF(
         if not bad_p_val:
             pushed = sphere_to_gaussian(model.transform(train_loader, reverse=False).detach().cpu())
             try:
-                if model.in_out_dim >= 2:
+                if model.hypernetwork.in_out_dim >= 2:
                     p_value = multivariate_normality(pushed.cpu().detach().numpy())[1]
                 else:
                     p_value = shapiro(pushed.cpu().detach().numpy())[1]
