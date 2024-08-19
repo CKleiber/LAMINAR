@@ -188,41 +188,31 @@ class PlanarCNF(nn.Module):
         return z_t
 
 
-#class EarlyStopping:
-#    def __init__(self, 
-#                 patience: int = 15, 
-#                 significance: float = 5):
-#        
-#        self.patience = patience
-#        self.significance = significance
-#
-#    def __call__(self, loss_hist: list) -> bool:
-#        if len(loss_hist) <= self.patience:
-#            return False
-#        
-#        vals = torch.tensor(loss_hist[-self.patience-1:-1])
-#        vals_mean = vals.mean()
-#        vals_std = vals.std()
-#
-#        if loss_hist[-1] > vals_mean + self.significance * vals_std:
-#            return True
-
 class EarlyStopping:
-    def __init__(self, patience: int = 5, p_lim: float = 0.05):
+    def __init__(self, patience: int = 50, sig: float = 3.0):
         self.patience = patience
-        self.p_lim= p_lim
+        self.sig = sig
+        self.hist = []
+        self.running_mean = []
+        self.running_std = []
+    
+    def __call__(self, loss: float) -> bool:
+        self.hist.append(loss)
 
-
-    def __call__(self, p_val_hist) -> bool:
-
-        if len(p_val_hist) <= self.patience:
+        if len(self.hist) < self.patience:
+            self.running_mean.append(np.mean(self.hist))
+            self.running_std.append(np.std(self.hist))
             return False
-        
-        if (torch.tensor(p_val_hist[-self.patience:]) > self.p_lim).all():
+        else:
+            self.running_mean.append(np.mean(self.hist[-self.patience:]))
+            self.running_std.append(np.std(self.hist[-self.patience:]))
+
+        if self.running_mean[-1] > self.running_mean[-self.patience] - self.sig * self.running_std[-self.patience]:
             return True
         else:
-            return False
-
+            return False          
+        
+        
 # train function of the planar CNF    
 def train_PlanarCNF(
         model: PlanarCNF,
@@ -230,8 +220,8 @@ def train_PlanarCNF(
         train_loader: DataLoader,
         epochs: int = 100,
         batch_size: int = 128,
-        patience: int = 15,  # early stopping patience
-        p_lim: float = 0.05, # early stopping significance
+        patience: int = 50,  # early stopping patience
+        sig: float = 3.0, # early stopping significance
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         verbose: bool = True) -> list:
     '''
@@ -241,22 +231,20 @@ def train_PlanarCNF(
     epochs: int                     - number of epochs for the training
     batch_size: int                 - batch size for the training
     patience: int                   - early stopping patience
+    sig: float                      - early stopping significance
     device: torch.device            - device on which the model is trained, either GPU if available or CPU
     verbose: bool                   - verbosity of the training process
     '''
-    
-    bad_p_val = False
 
     loss_history = []
-    p_value_history = []
-
+    
     model.to(device)
     model.train()
     dataloader_train = DataLoader(train_loader, batch_size=batch_size, shuffle=True)
 
     pbar = tqdm(range(epochs), disable=not verbose)
 
-    earlystop = EarlyStopping(patience=patience, p_lim=p_lim)
+    earlystop = EarlyStopping(patience=patience, sig=sig)
     
     for epoch in pbar:
         total_loss = 0
@@ -284,34 +272,13 @@ def train_PlanarCNF(
 
         loss_history.append(total_loss / len(dataloader_train))
 
-        if not bad_p_val:
-            pushed = sphere_to_gaussian(model.transform(train_loader, reverse=False).detach().cpu())
-            try:
-                if model.hypernetwork.in_out_dim >= 2:
-                    p_value = multivariate_normality(pushed.cpu().detach().numpy())[1]
-                else:
-                    p_value = shapiro(pushed.cpu().detach().numpy())[1]
-                
-            except np.linalg.LinAlgError:
-                print('Unable to calculate p-value - Deactive early stopping with p-value monitoring')
-                p_value = 0.0
-                bad_p_val = True
-
-        p_value_history.append(p_value)
-
         if verbose:
-            pbar.set_description(f"Epoch {epoch+1} | Loss: {loss_history[-1]:.4f} | p-value: {p_value:.2E}")
-
-        #if p_value > 0.05:
-        #    if verbose:
-        #        print(f"Early stopping at epoch {epoch+1}")
-        #    break
+            pbar.set_description(f"Epoch {epoch+1} | Loss: {loss_history[-1]:.4f}")
 
         # early stopping
-        if not bad_p_val:
-            if earlystop(p_value_history):
-                if verbose:
-                    print(f"Early stopping at epoch {epoch+1}")
-                break
+        if earlystop(loss_history[-1]):
+            if verbose:
+                print(f"Early stopping at epoch {epoch+1}")
+            break
 
-    return loss_history, p_value_history
+    return loss_history
