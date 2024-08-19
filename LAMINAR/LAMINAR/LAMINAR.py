@@ -100,7 +100,7 @@ class LAMINAR():
         p_lim: float                        - p_lim level for the early stopping
         verbose: bool                       - verbosity of the training process
         '''
-        self.loss_history = train_PlanarCNF(self.flow, optimizer, data, epochs, batch_size, patience, p_lim, self.device, verbose)    
+        self.loss_history, self.p_value_history = train_PlanarCNF(self.flow, optimizer, data, epochs, batch_size, patience, p_lim, self.device, verbose)    
 
     # function to generate the distance matrix for the neighbourhoods
     def _generate_distance_matrix(self):

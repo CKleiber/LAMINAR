@@ -212,15 +212,13 @@ class EarlyStopping:
         self.patience = patience
         self.p_lim= p_lim
 
-        self.p_hist = []
 
-    def __call__(self, p_val) -> bool:
-        self.p_hist.append(p_val)
+    def __call__(self, p_val_hist) -> bool:
 
-        if len(self.p_hist) <= self.patience:
+        if len(p_val_hist) <= self.patience:
             return False
         
-        if (torch.tensor(self.p_hist[-self.patience:]) > self.p_lim).all():
+        if (torch.tensor(p_val_hist[-self.patience:]) > self.p_lim).all():
             return True
         else:
             return False
@@ -250,6 +248,7 @@ def train_PlanarCNF(
     bad_p_val = False
 
     loss_history = []
+    p_value_history = []
 
     model.to(device)
     model.train()
@@ -292,11 +291,13 @@ def train_PlanarCNF(
                     p_value = multivariate_normality(pushed.cpu().detach().numpy())[1]
                 else:
                     p_value = shapiro(pushed.cpu().detach().numpy())[1]
-                    
+                
             except np.linalg.LinAlgError:
                 print('Unable to calculate p-value - Deactive early stopping with p-value monitoring')
                 p_value = 0.0
                 bad_p_val = True
+
+        p_value_history.append(p_value)
 
         if verbose:
             pbar.set_description(f"Epoch {epoch+1} | Loss: {loss_history[-1]:.4f} | p-value: {p_value:.2E}")
@@ -308,9 +309,9 @@ def train_PlanarCNF(
 
         # early stopping
         if not bad_p_val:
-            if earlystop(p_value):
+            if earlystop(p_value_history):
                 if verbose:
                     print(f"Early stopping at epoch {epoch+1}")
                 break
 
-    return loss_history
+    return loss_history, p_value_history
