@@ -207,7 +207,7 @@ class EarlyStopping:
             self.running_mean.append(np.mean(self.hist[-self.patience:]))
             self.running_std.append(np.std(self.hist[-self.patience:]))
 
-        if self.running_mean[-1] > self.running_mean[-self.patience] - self.sig * self.running_std[-self.patience]:
+        if self.hist[-1] > self.running_mean[-1] + self.sig * self.running_std[-1]:
             return True
         else:
             return False          
