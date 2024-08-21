@@ -186,6 +186,29 @@ class PlanarCNF(nn.Module):
 
                 z_t = z_t[-1]
         return z_t
+    
+    def get_jacobian(self, X: torch.Tensor) -> torch.Tensor:
+        # calculate the jacobian of the ode transformation given by the model for a point X
+        self.eval()
+        X = X.to(self.device)
+        X.requires_grad = True
+
+        z_t, _ = odeint(
+            self,
+            (X, torch.zeros(X.shape[0], 1).to(self.device)),
+            torch.tensor([1, 0]).type(torch.float32).to(self.device),
+            atol=1e-5, rtol=1e-5,
+            method='dopri5',
+        )
+
+        z_t0 = z_t[-1]
+
+        #autograd
+        J = torch.zeros((X.shape[1], X.shape[1])).to(self.device)
+        for i in range(X.shape[1]):
+            J[i] = torch.autograd.grad(z_t0[0, i], X, create_graph=True)[0].contiguous()[0]
+
+        return J
 
 
 class EarlyStopping:

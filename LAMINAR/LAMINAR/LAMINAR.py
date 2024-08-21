@@ -7,7 +7,7 @@ from scipy.sparse.csgraph import dijkstra
 from scipy.stats import shapiro, combine_pvalues    
 from pingouin import multivariate_normality
 from LAMINAR.Flow.planarCNF import PlanarCNF, train_PlanarCNF
-from LAMINAR.utils.gaussian2uniform import sphere_to_gaussian
+from LAMINAR.utils.gaussian2uniform import sphere_to_gaussian, jacobian_gaussian_to_sphere
 
 
 '''
@@ -18,6 +18,7 @@ class LAMINAR():
                  data: Union[np.ndarray, torch.Tensor],
                  epochs: int = 100,
                  k_neighbours: int = 20,
+                 grid_resolution: int = 100,
                  hyperparameters: dict = {},
                  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         '''
@@ -31,6 +32,7 @@ class LAMINAR():
         self.device = device   
         self.k_neighbours = k_neighbours
         self.dimension = data.shape[1]
+        self.grid_resolution = grid_resolution
 
         # make data a tensor if it is an array
         if isinstance(data, np.ndarray):
@@ -47,6 +49,9 @@ class LAMINAR():
         self.sig = hyperparameters.get('sig', 3.0)
         self.batch_size = hyperparameters.get('batch_size', 128)
 
+        # make grid from -3 to 3 with 100 points in every dimension
+        self._make_grid(self.grid_resolution)
+
         # initialize the flow
         self.flow = PlanarCNF(in_out_dim=self.dimension, hidden_dim=self.hidden_dim, width=self.width, device=self.device)
         optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.learning_rate)
@@ -59,6 +64,18 @@ class LAMINAR():
         
         # generate the distance matrix of the k closest neighbourhoods
         self._generate_distance_matrix()
+
+    def _make_grid(self, grid_resolution: int):
+        '''
+        grid_resolution: int - resolution of the grid
+        '''
+        # create a grid from -3 to 3 with grid_resolution points in every dimension
+        grid = np.linspace(-3, 3, grid_resolution)
+        grid = torch.tensor(np.meshgrid(*[grid for _ in range(self.dimension)])).reshape(self.dimension, -1).T
+
+        self.grid = grid.to(self.device)
+
+        # neighbours?
 
     # get p value of the gaussian after the flow
     def p_value(self):
@@ -110,7 +127,10 @@ class LAMINAR():
         # calculate the covariance of each points neighbours
         cov_matrices = np.zeros((self.data.shape[0], self.dimension, self.dimension))
         for i in range(self.data.shape[0]):
-            cov_matrices[i] = np.cov(self.data[indices[i]].cpu().detach().numpy().T)
+            #cov_matrices[i] = np.cov(self.data[indices[i]].cpu().detach().numpy().T)
+            J = self.jacobian(self.data[i].reshape(1, -1))
+            # calculate metric tensor
+            cov_matrices[i] = torch.inverse(torch.matmul(torch.transpose(J, 0, 1), J))
 
         self.cov_matrices = torch.tensor(cov_matrices, dtype=torch.float32).to(self.device)
 
@@ -211,3 +231,16 @@ class LAMINAR():
             
             else:
                 return dist
+            
+    def jacobian(self, X: torch.Tensor) -> torch.Tensor:
+        '''
+        X: torch.Tensor - input data
+        '''
+        X_transformed = self.flow.transform(X, timesteps=self.timesteps)
+
+        J_flow = self.flow.get_jacobian(X)
+        J_gaussian_to_sphere = jacobian_gaussian_to_sphere(X_transformed)
+
+        J = J_flow @ J_gaussian_to_sphere
+
+        return J.detach()
