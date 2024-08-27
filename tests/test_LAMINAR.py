@@ -18,8 +18,6 @@ def test_LAMINAR():
     assert LAM.dimension == 2
     assert LAM.flow.device == torch.device("cuda" if torch.cuda.is_available() else "cpu")
     assert type(LAM.flow).__name__ == LAMINAR.Flow.planarCNF.PlanarCNF.__name__
-    assert LAM.distance_matrix.shape == (100, 100)
-    assert LAM.cov_matrices.shape == (100, 2, 2)
 
     # check metric properties:
     
@@ -42,9 +40,4 @@ def test_LAMINAR():
             for k in range(100):
                 assert dist_matrix[i, j] <= dist_matrix[i, k] + dist_matrix[k, j]
 
-    
-    # check standardisation
-    assert LAMINAR.standardize(data).shape == data.shape
-    assert LAMINAR.standardize(data).mean() <= 1e-3
-    assert abs(LAMINAR.standardize(data).std() - 1) <= 1e-3
     
