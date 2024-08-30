@@ -24,7 +24,7 @@ def test_LAMINAR():
     # build full distance matrix
     dist_matrix = np.zeros((100, 100))
     for i in range(100):
-        dist = LAM.distance(data[i].reshape(1, -1))
+        dist = LAM.distance(i)[0]
         dist_matrix[i, :] = dist
 
     # symmetry
