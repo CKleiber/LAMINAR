@@ -137,7 +137,10 @@ class LAMINAR():
         for i in range(self.reference.shape[0]):
             self.jacobians[i] = self.jacobian(self.reference[i].reshape(1, -1))
             pbar.update(1)
-        self.metric_t = torch.einsum('ijk, ikl -> ijl', self.jacobians, self.jacobians).to(self.device)
+
+        self.metric_t = torch.einsum('bik,bjk->bij', self.jacobians, self.jacobians).to(self.device)
+        # invert the individual metric tensors
+        self.metric_t = torch.inverse(self.metric_t)
 
         # get neighbours of the reference points
         pbar = tqdm(total=self.reference.shape[0], desc='Calculating Neighbours')
@@ -158,7 +161,8 @@ class LAMINAR():
             for j in self.reference_pushed_indices[i]:
                 if self.distance_matrix[i, j] == float('inf'):
                     
-                    common_metric_t = torch.inverse((torch.inverse(self.metric_t[i]+ 1e-6 * torch.eye(self.dimension)) + torch.inverse(self.metric_t[j]+ 1e-6 * torch.eye(self.dimension)))/2) + 1e-6 * torch.eye(self.dimension).to(self.device)
+                    #common_metric_t = torch.inverse((torch.inverse(self.metric_t[i]) + torch.inverse(self.metric_t[j]))/2)
+                    common_metric_t = (self.metric_t[i] + self.metric_t[j])/2
 
                     x_i = self.reference[i].reshape(1, -1)
                     x_j = self.reference[j].reshape(1, -1)
@@ -166,12 +170,7 @@ class LAMINAR():
                     met_det = torch.det(common_metric_t) ** 1/self.dimension
                     
                     mahalanobis_distance = torch.sqrt(met_det * (x_i - x_j) @ torch.inverse(common_metric_t) @ (x_i - x_j).T)
-                    # assert not nan
-                    assert not torch.isnan(common_metric_t).any()
-                    assert not torch.isnan(torch.inverse(common_metric_t))
-                    assert not torch.isnan((x_i - x_j) @ torch.inverse(common_metric_t) @ (x_i - x_j).T)
-                    assert not torch.isnan(met_det * (x_i - x_j) @ torch.inverse(common_metric_t) @ (x_i - x_j).T)
-                    assert met_det * (x_i - x_j) @ torch.inverse(common_metric_t) @ (x_i - x_j).T >= 0
+                    
                     # symmetry reasons
                     self.distance_matrix[i, j] = mahalanobis_distance
                     self.distance_matrix[j, i] = mahalanobis_distance
