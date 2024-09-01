@@ -49,7 +49,7 @@ def jacobian_gaussian_to_sphere(X: torch.Tensor) -> torch.Tensor: #at point x
 
     for i in range(d):
         for j in range(d):
-            J[i,j] = X[0, i] * X[0, j] * norm**(d-3) * torch.exp(-norm**2/2)/gamma(d/2) * gammainc(d/2, norm**2/2)**(1/d - 1) * 1/d - X[0, i] * X[0, j] * norm**(-3) * gammainc(d/2, norm**2/2)**(1/d)
+            J[i,j] = X[0, i].cpu() * X[0, j].cpu() * norm**(d-3) * torch.exp(-norm**2/2)/gamma(d/2) * gammainc(d/2, norm**2/2)**(1/d - 1) * 1/d - X[0, i].cpu() * X[0, j].cpu() * norm**(-3) * gammainc(d/2, norm**2/2)**(1/d)
 
             if i == j:
                 J[i,j] = J[i,j] + norm**-1 * gammainc(d/2, norm**2/2)**(1/d)
