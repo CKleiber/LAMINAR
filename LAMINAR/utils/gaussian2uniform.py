@@ -48,7 +48,7 @@ def jacobian_gaussian_to_sphere(X: torch.Tensor) -> torch.Tensor: #at point x
     gammainc_d2 = torch.tensor(gammainc(d/2, norm.cpu().numpy()**2/2)).to(X.device)
     gamma_d2 = torch.tensor(gamma(d/2)).to(X.device)
 
-    J = torch.zeros((d, d))
+    J = torch.zeros((d, d)).to(X.device)
 
     for i in range(d):
         for j in range(d):
