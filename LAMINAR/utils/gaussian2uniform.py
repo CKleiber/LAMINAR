@@ -45,7 +45,7 @@ def jacobian_gaussian_to_sphere(X: torch.Tensor) -> torch.Tensor: #at point x
     d = X.shape[1]
     norm = torch.norm(X, dim=1, keepdim=True)[0]
 
-    J = torch.zeros((d, d)).to(X.device)
+    J = torch.zeros((d, d))
 
     for i in range(d):
         for j in range(d):
