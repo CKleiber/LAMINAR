@@ -43,15 +43,15 @@ def sphere_to_gaussian(X: torch.Tensor) -> torch.Tensor:
 def jacobian_gaussian_to_sphere(X: torch.Tensor) -> torch.Tensor: #at point x
     # Compute the jacobian of the transformation from a multivariate gaussian to a d-dimensional sphere
     d = X.shape[1]
-    norm = torch.norm(X, dim=1, keepdim=True)[0]
+    norm = torch.norm(X, dim=1, keepdim=True)[0].cpu().numpy()
 
     J = torch.zeros((d, d))
 
     for i in range(d):
         for j in range(d):
-            J[i,j] = X[0, i].cpu() * X[0, j].cpu() * norm**(d-3) * torch.exp(-norm**2/2)/gamma(d/2) * gammainc(d/2, norm**2/2)**(1/d - 1) * 1/d - X[0, i].cpu() * X[0, j].cpu() * norm**(-3) * gammainc(d/2, norm**2/2)**(1/d)
+            J[i,j] = X[0, i].cpu().numpy() * X[0, j].cpu().numpy() * norm**(d-3) * torch.exp(-norm**2/2)/gamma(d/2) * gammainc(d/2, norm**2/2)**(1/d - 1) * 1/d - X[0, i].cpu().numpy() * X[0, j].cpu().numpy() * norm**(-3) * gammainc(d/2, norm**2/2)**(1/d)
 
             if i == j:
                 J[i,j] = J[i,j] + norm**-1 * gammainc(d/2, norm**2/2)**(1/d)
 
-    return J
+    return torch.tensor(J).to(X.device)
