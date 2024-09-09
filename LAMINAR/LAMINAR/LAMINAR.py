@@ -19,7 +19,7 @@ class LAMINAR():
                  data: Union[np.ndarray, torch.Tensor],
                  epochs: int = 100,
                  k_neighbours: int = 20,
-                 grid_resolution: int = 10,
+                 grid_resolution: int = 0,
                  hyperparameters: dict = {},
                  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         '''
