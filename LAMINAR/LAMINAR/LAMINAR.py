@@ -236,7 +236,8 @@ class LAMINAR():
         J_flow = self.flow.get_jacobian(X)
         J_gaussian_to_sphere = jacobian_gaussian_to_sphere(X_transformed)
 
-        J = J_flow @ J_gaussian_to_sphere
+        #J = J_flow @ J_gaussian_to_sphere
+        J = J_gaussian_to_sphere @ J_flow
 
         return J.detach()
     
