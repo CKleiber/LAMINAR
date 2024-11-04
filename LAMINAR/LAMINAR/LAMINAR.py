@@ -135,12 +135,12 @@ class LAMINAR():
         pbar = tqdm(total=self.reference.shape[0], desc='Calculating Jacobians')
         self.jacobians = torch.zeros(self.reference.shape[0], self.dimension, self.dimension).to(self.device)
         for i in range(self.reference.shape[0]):
-            self.jacobians[i] = self.jacobian(self.reference[i].reshape(1, -1))
+            self.jacobians[i] = self.jacobian(self.reference[i].reshape(1, -1)) # from uniform -> gaussian -> data
             pbar.update(1)
 
-        self.metric_t = torch.einsum('bik,bjk->bij', self.jacobians, self.jacobians).to(self.device)
+        self.metric_t = torch.einsum('bik,bjk->bij', self.jacobians, self.jacobians).to(self.device) # metric tensor from uniform -> gaussian -> data
         # invert the individual metric tensors
-        self.metric_t = torch.inverse(self.metric_t)
+        self.metric_t_inv = torch.inverse(self.metric_t)
 
         # get neighbours of the reference points
         pbar = tqdm(total=self.reference.shape[0], desc='Calculating Neighbours')
@@ -162,7 +162,7 @@ class LAMINAR():
                 if self.distance_matrix[i, j] == float('inf'):
                     
                     #common_metric_t = torch.inverse((torch.inverse(self.metric_t[i]) + torch.inverse(self.metric_t[j]))/2)
-                    common_metric_t = (self.metric_t[i] + self.metric_t[j])/2
+                    common_metric_t = (self.metric_t_inv[i] + self.metric_t_inv[j])/2 # other inversion happens later in l172
 
                     x_i = self.reference[i].reshape(1, -1)
                     x_j = self.reference[j].reshape(1, -1)
@@ -238,6 +238,9 @@ class LAMINAR():
 
         #J = J_flow @ J_gaussian_to_sphere
         J = J_gaussian_to_sphere @ J_flow
+
+        # inverse
+        J = torch.inverse(J) # Jacobian from uniform -> gaussian -> data
 
         return J.detach()
     
