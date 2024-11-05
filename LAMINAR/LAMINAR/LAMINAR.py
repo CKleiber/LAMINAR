@@ -167,7 +167,7 @@ class LAMINAR():
                     x_i = self.reference[i].reshape(1, -1)
                     x_j = self.reference[j].reshape(1, -1)
 
-                    met_det = torch.det(common_cov) ** 1/self.dimension
+                    met_det = torch.det(common_cov) ** (1/self.dimension)
                     
                     mahalanobis_distance = torch.sqrt(met_det * (x_i - x_j) @ torch.inverse(common_cov) @ (x_i - x_j).T)
                     
