@@ -138,9 +138,9 @@ class LAMINAR():
             self.jacobians[i] = self.jacobian(self.reference[i].reshape(1, -1)) # from uniform -> gaussian -> data
             pbar.update(1)
 
-        self.metric_t = torch.einsum('bik,bjk->bij', self.jacobians, self.jacobians).to(self.device) # metric tensor from uniform -> gaussian -> data
+        self.metric_t = torch.einsum('bji,bjk->bik', self.jacobians, self.jacobians).to(self.device) # metric tensor from uniform -> gaussian -> data (J^T * J)
         # invert the individual metric tensors
-        self.metric_t_inv = torch.inverse(self.metric_t)
+        self.metric_t_inv = torch.inverse(self.metric_t) # Covariance
 
         # get neighbours of the reference points
         pbar = tqdm(total=self.reference.shape[0], desc='Calculating Neighbours')
@@ -162,14 +162,14 @@ class LAMINAR():
                 if self.distance_matrix[i, j] == float('inf'):
                     
                     #common_metric_t = torch.inverse((torch.inverse(self.metric_t[i]) + torch.inverse(self.metric_t[j]))/2)
-                    common_metric_t = (self.metric_t_inv[i] + self.metric_t_inv[j])/2 # other inversion happens later in l172
+                    common_cov = (self.metric_t_inv[i] + self.metric_t_inv[j])/2 # other inversion happens later in l172
 
                     x_i = self.reference[i].reshape(1, -1)
                     x_j = self.reference[j].reshape(1, -1)
 
-                    met_det = torch.det(common_metric_t) ** 1/self.dimension
+                    met_det = torch.det(common_cov) ** 1/self.dimension
                     
-                    mahalanobis_distance = torch.sqrt(met_det * (x_i - x_j) @ torch.inverse(common_metric_t) @ (x_i - x_j).T)
+                    mahalanobis_distance = torch.sqrt(met_det * (x_i - x_j) @ torch.inverse(common_cov) @ (x_i - x_j).T)
                     
                     # symmetry reasons
                     self.distance_matrix[i, j] = mahalanobis_distance
