@@ -140,7 +140,7 @@ class LAMINAR():
 
         self.metric_t_inv = torch.einsum('bji,bjk->bik', self.jacobians, self.jacobians).to(self.device) # metric tensor from uniform -> gaussian -> data (J^T * J)
         # invert the individual metric tensors
-        #self.metric_t_inv = torch.inverse(self.metric_t) # Covariance
+        self.metric_t_inv = torch.inverse(self.metric_t) # Covariance
 
         # get neighbours of the reference points
         pbar = tqdm(total=self.reference.shape[0], desc='Calculating Neighbours')
@@ -240,7 +240,7 @@ class LAMINAR():
         J = J_gaussian_to_sphere @ J_flow
 
         # inverse
-        J = torch.inverse(J) # Jacobian from uniform -> gaussian -> data
+        #J = torch.inverse(J) # Jacobian from uniform -> gaussian -> data
 
         return J.detach()
     
