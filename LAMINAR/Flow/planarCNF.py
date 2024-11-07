@@ -206,7 +206,7 @@ class PlanarCNF(nn.Module):
         #autograd
         J = torch.zeros((X.shape[1], X.shape[1])).to(self.device)
         for i in range(X.shape[1]):
-            J[i] = torch.autograd.grad(z_t0[0, i], X, create_graph=True)[0].contiguous()[0]
+            J[i] = torch.autograd.grad(z_t0[0, i], X, create_graph=True)[0].contiguous()[0]  # changing input and output may change the direction of the gradient and get rid of an inversion later
 
         return J
 

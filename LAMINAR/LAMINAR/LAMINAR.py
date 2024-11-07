@@ -138,9 +138,9 @@ class LAMINAR():
             self.jacobians[i] = self.jacobian(self.reference[i].reshape(1, -1)) # from uniform -> gaussian -> data
             pbar.update(1)
 
-        self.metric_t = torch.einsum('bji,bjk->bik', self.jacobians, self.jacobians).to(self.device) # metric tensor from uniform -> gaussian -> data (J^T * J)
+        self.metric_t_inv = torch.einsum('bji,bjk->bik', self.jacobians, self.jacobians).to(self.device) # metric tensor from uniform -> gaussian -> data (J^T * J)
         # invert the individual metric tensors
-        self.metric_t_inv = torch.inverse(self.metric_t) # Covariance
+        #self.metric_t_inv = torch.inverse(self.metric_t) # Covariance
 
         # get neighbours of the reference points
         pbar = tqdm(total=self.reference.shape[0], desc='Calculating Neighbours')
