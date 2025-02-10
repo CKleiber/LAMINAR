@@ -5,7 +5,7 @@ from scipy.special import gamma, gammainc, gammaincinv
 Helper functions for converting points from a gaussian distribution to a uniform distribution
 on the unit sphere and vice versa.
 '''
-
+# test
 def gaussian_to_sphere(X: torch.Tensor) -> torch.Tensor:
     # Convert a multivariate gaussian of any dimension d to a d-dimensional sphere
     d = X.shape[1]
