@@ -1,2 +1,2 @@
-from .gaussian2uniform import gaussian_to_sphere, sphere_to_gaussian
+from .gaussian2uniform import gaussian_to_sphere, sphere_to_gaussian, jacobian_gaussian_to_sphere
 from .standardize import standardize

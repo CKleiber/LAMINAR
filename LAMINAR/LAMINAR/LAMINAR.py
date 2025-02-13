@@ -8,261 +8,177 @@ from scipy.stats import shapiro, combine_pvalues
 from pingouin import multivariate_normality
 from tqdm import tqdm
 from LAMINAR.Flow.planarCNF import PlanarCNF, train_PlanarCNF
-from LAMINAR.utils.gaussian2uniform import sphere_to_gaussian, jacobian_gaussian_to_sphere
-
+from LAMINAR.Flow.OTFlow import Phi, train_OTFlow, integrate
+from LAMINAR.utils.gaussian2uniform import sphere_to_gaussian, jacobian_gaussian_to_sphere, gaussian_to_sphere
+from LAMINAR.utils.geodesics import geodesic_length, geodesic_path
 
 '''
 Implementation of the LAM algorithm using a normalizing flow to transform the data
 '''
 class LAMINAR():
     def __init__(self,
-                 data: Union[np.ndarray, torch.Tensor],
-                 epochs: int = 100,
-                 k_neighbours: int = 20,
-                 grid_resolution: int = 0,
-                 hyperparameters: dict = {},
-                 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-        '''
-        data: Union[np.ndarray, torch.Tensor]  - input data to be transformed, either array or tensor
-        epochs: int                            - number of (max) epochs for the training, early stopping is used
-        k_neighbours: int                      - number of neighbours to consider; more neighbours lead to a more global metric but also to a higher computational cost, less neighbours lead to more local metric
-        hyperparameters: dict                  - hyperparameters for the flow model
-        device: torch.device                   - device on which the model is trained, either GPU if available or CPU
-        '''
-
-        self.device = device   
-        self.k_neighbours = k_neighbours
-        self.dimension = data.shape[1]
-        self.grid_resolution = grid_resolution
-
-        # make data a tensor if it is an array
-        if isinstance(data, np.ndarray):
-            data = torch.tensor(data, dtype=torch.float32)
-
-        self.data = data.to(self.device)
-
-        # hyperparameters for the flow model
-        self.hidden_dim = hyperparameters.get('hidden_dim', 32)
-        self.width = hyperparameters.get('width', 64)
-        self.timesteps = hyperparameters.get('timesteps', 50)
-        self.learning_rate = hyperparameters.get('learning_rate', 1e-3)
-        self.patience = hyperparameters.get('patience', 50)
-        self.sig = hyperparameters.get('sig', 3.0)
-        self.batch_size = hyperparameters.get('batch_size', 128)
-
-        # make grid in unit sphere with 100 points in every dimension
-        self._make_grid()
-
-        # initialize the flow
-        self.flow = PlanarCNF(in_out_dim=self.dimension, hidden_dim=self.hidden_dim, width=self.width, device=self.device)
-        optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.learning_rate)
+                 data, 
+                 alph = [1.0, 100.0, 5.0],
+                 nt = 8, 
+                 nt_val = 8,
+                 nTh = 3,
+                 m = 32,
+                 lr = 0.1,
+                 drop_freq = 100,
+                 lr_drop = 2,
+                 k_neigh_frac = 0.05,
+                 epochs = 1500):
         
-        # train the flow on data
-        self._train(self.data, optimizer, epochs=epochs, batch_size=self.batch_size, patience=self.patience, sig=self.sig)
+        self.device = data.device
+        self.data = data
+
+        self.alph = alph
+        self.nt = nt
+        self.nt_val = nt_val
+        self.nTh = nTh
+        self.m = m
+        self.lr = lr
+        self.drop_freq = drop_freq
+        self.lr_drop = lr_drop
+        self.k_neigh_frac = k_neigh_frac 
+        self.epochs = epochs
+
+        self.d = self.data.shape[1]
+        self.n = self.data.shape[0]
+
+        self.k_neigh = int(self.n*self.k_neigh_frac) + 1
+
+        # split the data into training and validation
+
+        self.data_train = self.data[:int(self.n*0.8)]
+        self.data_val = self.data[int(self.n*0.8):]
+
+        # initialize the normalizing flow
+
+        self.net = Phi(self.nTh, self.m, self.d, alph=self.alph, device=self.device)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
+
+        # train the model
         
-        # concat the data and the grid
-        self.reference = torch.cat((self.data, self.grid), dim=0)
-        # push reference
-        self.reference_pushed = self.flow.transform(self.reference, timesteps=self.timesteps)
-        self.data_pushed = self.reference_pushed[:self.data.shape[0]]
+        self.loss_hist = train_OTFlow(self.net, self.optimizer, self.data_train, self.data_val, self.epochs, self.nt, self.nt_val, self.drop_freq, self.lr_drop)
 
-        # generate distance matrix
-        self._generate_distance_matrix()
+        # set up the graph
 
+        self.set_up_graph()
 
-    def _make_grid(self):
-        # make a grid spaning over the entire data range
+        #...
 
-        # get min and max values of the data in each dimension
-        min_values = torch.min(self.data, dim=0)[0]
-        max_values = torch.max(self.data, dim=0)[0]
+    def switch_device(self, device):
+        self.device = device
+        self.net.to(device)
 
-        # get the range of the data
-        range_values = max_values - min_values
+    def set_up_graph(self):
+        self.X_pushed = integrate(self.data, self.net, [0, 1], nt=self.nt, stepper="rk4", alph=self.alph, intermediates=False).cpu().detach()[:, :self.d]
+        self.X_pushed = gaussian_to_sphere(self.X_pushed)
 
-        # number of grid points in each dimension 
-        grid_points = [int(self.grid_resolution * range_value.item()) for range_value in range_values]
+        kdt = KDTree(self.X_pushed)
+        dists, neighs = kdt.query(self.X_pushed, k=self.k_neigh)
 
-        # make uniform grid with grid_points points in each dimension
-        grid = torch.meshgrid(*[torch.linspace(min_values[i], max_values[i], grid_points[i]) for i in range(self.dimension)], indexing='ij')
-        self.grid = torch.stack(grid, dim=-1).reshape(-1, self.dimension).to(self.device)
+        self.graph = torch.zeros(self.n, self.n).to(self.device)
 
-    # get p value of the gaussian after the flow
-    def p_value(self):
-        '''
-        Function to calculate the p-value of the pushed data distribution
-        '''
-        # calculate the p-value of the data distribution
+        metric = self.net.fullHessian(self.data, steps=self.nt_val)
 
-        data = sphere_to_gaussian(self.data_pushed.cpu().detach()).to(self.device)
-        try:
-            if self.dimension >= 2:
-                p = multivariate_normality(data.cpu().detach().numpy())[1]
-            else:
-                p = shapiro(data.cpu().detach().numpy())[1]        
-        except np.linalg.LinAlgError:
-            print('Unable to calculate p-value')
-            p = 0.0
+        m = (metric[neighs] + metric[neighs][:, :1]) / 2
 
-        print(f'Henze-Zirkler p-value:\t{p}')
-    
-        return p 
+        distances = torch.einsum('bni,bnij,bnj->bn', (self.data[neighs] - self.data[:, None]), m, (self.data[neighs] - self.data[:, None]))
 
-    # train function
-    def _train(self,
-              data: torch.Tensor,
-              optimizer: torch.optim.Optimizer,
-              epochs: int = 100,
-              batch_size: int = 128,
-              patience: int = 50,
-              sig: float = 3.0,
-              verbose: bool = True
-              ):
-        '''
-        data: torch.Tensor                  - input data to be transformed
-        optimizer: torch.optim.Optimizer    - optimizer for the training process
-        epochs: int                         - number of epochs for the training
-        batch_size: int                     - batch size for the training
-        patience: int                       - early stopping patience
-        sig: float                          - significance level for the early stopping
-        verbose: bool                       - verbosity of the training process
-        '''
-        self.loss_history = train_PlanarCNF(self.flow, optimizer, data, epochs, batch_size, patience, sig, self.device, verbose)    
+        row_indices = torch.arange(neighs.shape[0]).repeat_interleave(neighs.shape[1])
+        col_indices = neighs.flatten()
+        dist_values = distances.flatten()
 
-    # function to generate the distance matrix for the neighbourhoods
-    def _generate_distance_matrix(self):
-        # jacobians
-        pbar = tqdm(total=self.reference.shape[0], desc='Calculating Jacobians')
-        self.jacobians = torch.zeros(self.reference.shape[0], self.dimension, self.dimension).to(self.device)
-        for i in range(self.reference.shape[0]):
-            self.jacobians[i] = self.jacobian(self.reference[i].reshape(1, -1)) # from uniform -> gaussian -> data
-            pbar.update(1)
+        self.graph[row_indices, col_indices] = dist_values 
 
-        self.metric_t = torch.einsum('bji,bjk->bik', self.jacobians, self.jacobians).to(self.device) # metric tensor from uniform -> gaussian -> data (J^T * J)
-        # invert the individual metric tensors
-        self.metric_t_inv = torch.inverse(self.metric_t) # Covariance
+        # graph symmetric, by transposition and insertion of values which are not yet in the graph
+        graph_sub_transpose = self.graph - self.graph.t()
 
-        # get neighbours of the reference points
-        pbar = tqdm(total=self.reference.shape[0], desc='Calculating Neighbours')
-        self.KDTree_reference_pushed = KDTree(self.reference_pushed.cpu().detach().numpy())
-        self.reference_pushed_indices = []
-        for i in range(self.reference_pushed.shape[0]):
-            _, indices = self.KDTree_reference_pushed.query(self.reference_pushed[i].cpu().detach().numpy(), k=self.k_neighbours)
-            self.reference_pushed_indices.append(indices)
-            pbar.update(1)
+        # set positive values to zero
+        graph_sub_transpose[graph_sub_transpose > 0] = 0
+        self.graph = self.graph - graph_sub_transpose
 
-        # generate matrix and fill with inf
-        self.distance_matrix = torch.zeros((self.reference.shape[0], self.reference.shape[0])).to(self.device)
-        self.distance_matrix.fill_(float('inf'))
+        self.dist_matrix, self.predecessors = dijkstra(self.graph.detach().cpu().numpy(), return_predecessors=True)
 
-        # fill non infty values
-        pbar = tqdm(total=self.reference.shape[0], desc='Calculating Distances')
-        for i in range(self.reference.shape[0]):
-            for j in self.reference_pushed_indices[i]:
-                if self.distance_matrix[i, j] == float('inf'):
-                    
-                    #common_metric_t = torch.inverse((torch.inverse(self.metric_t[i]) + torch.inverse(self.metric_t[j]))/2)
-                    common_cov = (self.metric_t_inv[i] + self.metric_t_inv[j])/2 # other inversion happens later in l172
+    def query(self, start, k=None):
+          # start is an array of shape (m, d)
+        # calculate the k nearest points and their distance for each start point
+        # data has shape (n, d)
 
-                    x_i = self.reference[i].reshape(1, -1)
-                    x_j = self.reference[j].reshape(1, -1)
+        # find the closest point for each start point
+        if start.shape == (self.d,):
+            start = start.reshape(1, self.d)
 
-                    met_det = torch.det(common_cov) ** (1/self.dimension)
-                    
-                    mahalanobis_distance = torch.sqrt(met_det * (x_i - x_j) @ torch.inverse(common_cov) @ (x_i - x_j).T)
-                    
-                    # symmetry reasons
-                    self.distance_matrix[i, j] = mahalanobis_distance
-                    self.distance_matrix[j, i] = mahalanobis_distance
-            pbar.update(1)
+        start_approx = torch.argmin(torch.norm(self.data.unsqueeze(0).expand(start.shape[0], -1, -1) - start.unsqueeze(1), dim=2), dim=1)
+
+        # calculate the distances from each approximation to the actual start point
+        start_delta = self.data[start_approx] - start
+        start_mean = (self.data[start_approx] + start) / 2
+
+        g = self.net.metric_tensor(start_mean)
+
+        dist = torch.einsum('bi,bij,bj->b', start_delta, g, start_delta) # shape (m,)
+
+        # dijkstra distances
+        dists = torch.tensor(self.dist_matrix[start_approx]) # shape (m, n)
+
+        # add dist to dists
+        dists = dists + dist.unsqueeze(1)
+
+        # sort distances from small to large
+        dists, idx = torch.sort(dists, dim=1)
+
+        ## sort idx of point with respect to distance
+        #idx = torch.argsort(dists, dim=1)
+
+        if k is not None:
+            return idx[:, :k], dists[:, :k].detach()
         
-
-    # function to calculate the distance between any points
-    def distance(self, 
-                 x: Union[int, np.ndarray],
-                 y: Union[int, np.ndarray, None] = None,
-                 return_path: bool = False) -> float:
-        '''
-        x_ind: Union[int, np.ndarray]       - index of the reference point
-        y_ind: Union[int, np.ndarray, None] - index of the target point(s); None selects all points
-        return_path: bool                   - return all points on the shortest path
-        '''
-        
-        # make x and array of shape (1)
-        if isinstance(x, int):
-            x = np.array([x])
-        assert len(x) == 1
-        x = x.reshape(1)
-
-        if y is None:
-            y = np.arange(self.data.shape[0])
-        elif isinstance(y, int):
-            y = np.array([y])
-        # make y and array of shape (len)
-        y = y.reshape(y.shape[0])
-
-
-        # get the shortest path between the points using dijkstra
-        dist, path = dijkstra(self.distance_matrix.cpu().detach().numpy(), indices=x, return_predecessors=True)
-        
-        return_distances = np.array(dist[0, y])
-        
-        if return_path and len(y) == 1:
-            shortest_path = []
-            i = x[0]
-            j = y[0]
-            while j != i:
-                shortest_path.append(j)
-                j = path[0, j]
-
-            shortest_path.append(i)
-            shortest_path.reverse()
-
-            shortest_path = np.array(shortest_path)
-            shortest_path = self.reference[shortest_path]
-
-            return return_distances, shortest_path
-        
-        else:
-            return return_distances
-
-    # function to calculate the jacobian of the flow and the cdf transformation
-    def jacobian(self, X: torch.Tensor) -> torch.Tensor:
-        '''
-        X: torch.Tensor - input data
-        '''
-        X_transformed = self.flow.transform(X, timesteps=self.timesteps)
-
-        J_flow = self.flow.get_jacobian(X)
-        J_gaussian_to_sphere = jacobian_gaussian_to_sphere(X_transformed)
-
-        #J = J_flow @ J_gaussian_to_sphere
-        J = J_gaussian_to_sphere @ J_flow
-
-        # inverse
-        #J = torch.inverse(J) # Jacobian from uniform -> gaussian -> data
-
-        return J.detach()
+        return idx, dists.detach()
     
 
-    def query(self,
-              x: Union[int, np.ndarray],
-              k_neighbours: Union[int, None] = None):
-        
-            if isinstance(x, int):
-                x = np.array([x])
-            x = x.reshape(1, -1)
+    def distance_approx(self, start, end):
+        # push start and end to the sphere
+        extreme_points = torch.cat([start, end], dim=0).reshape(2, self.d)
 
-            if k_neighbours is None:
-                k_neighbours = self.k_neighbours
+        extreme_points = integrate(extreme_points, self.net, [0, 1], nt=self.nt_val, stepper="rk4", alph=self.alph, intermediates=False).cpu().detach()[:, :self.d]
+        extreme_points = gaussian_to_sphere(extreme_points)
 
-            neighbours = []
-            distances = []
+        start_pushed = extreme_points[0]
+        end_pushed = extreme_points[1]
 
-            for i in x[0]:
-                dist = self.distance(int(i), return_path=False)
-                _, indices = torch.topk(torch.tensor(dist), k=k_neighbours, largest=False)
-                neighbours.append(indices.cpu().detach().numpy())
-                distances.append(dist[indices])
+        # get closest points in x_pushed to start and end
+        start_approx = torch.argmin(torch.norm(self.X_pushed - start_pushed, dim=1))
+        end_approx = torch.argmin(torch.norm(self.X_pushed - end_pushed, dim=1))
 
-            return neighbours, distances
+        # get the distance from start to end
+
+        path_idx = [end_approx]
+
+        current = end_approx
+
+        while current != start_approx:
+            current = self.predecessors[start_approx, current]
+            path_idx.append(current)
+
+        path_idx = torch.tensor(path_idx).flip(0)
+
+        path = self.data[path_idx]
+
+        full_path = torch.concatenate([start.reshape(1, 2), path, end.reshape(1, 2)], dim=0)
+
+        dist = geodesic_length(full_path.reshape(1, full_path.shape[0], self.d), start, end, self.net.metric_tensor)
+
+        return dist, full_path
+
+    def distance_smooth(self, start, end):
+        dist, path = self.distance_approx(start, end)
+
+        points, _ = geodesic_path(start, end, self.net.metric_tensor, lr=1e-2, initial_guess=path, max_iter=1000)
+
+        dist = geodesic_length(points[1:-1].reshape(1, points[1:-1].shape[0], self.d), start, end, self.net.metric_tensor)
+
+        return dist, points.detach()
+    
