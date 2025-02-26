@@ -57,7 +57,7 @@ def christoffel_symbol(x, metric_func, eps=1e-6, numeric_diff = True):
 def geodesic_equation(path, metric_func, eps=1e-6):
 
     # velocity at each point
-    v = path[1:] - path[:-1] # shape: n-1, dim
+    v = (path[2:] - path[:-2])/2 # shape: n-2, dim
 
     # acceleration at each point
     a = path[2:] - 2*path[1:-1] + path[:-2] # shape: n-2, dim
@@ -66,7 +66,7 @@ def geodesic_equation(path, metric_func, eps=1e-6):
     christoffel = christoffel_symbol(path[1:-1], metric_func, eps=eps, numeric_diff=True) # shape: n-2, dim, dim, dim
 
     # calculate the geodesic equation
-    delta_mu = torch.einsum('ndij,ni,nj->nd', christoffel, v[:-1], v[:-1]) # shape: n-2, dim
+    delta_mu = torch.einsum('ndij,ni,nj->nd', christoffel, v, v) # shape: n-2, dim
     delta_mu = a + delta_mu
 
     tot_deviation = torch.sum(torch.sqrt(torch.sum(delta_mu**2, dim=1)))
@@ -93,6 +93,26 @@ def geodesic_length(points, start, end, metric_func):
 
     variance = torch.var(torch.sqrt(ds_squared))
     return total_length, variance
+
+
+def geodesic_straight_line(starts, ends, metric_func, inbetween = 10):
+    # starts shape (n, d)
+    # ends shape (n, d)
+
+    n = starts.shape[0]
+    d = starts.shape[1]
+
+    # for every instance n, make a straight line between start and end
+    points = torch.linspace(0, 1, inbetween+2).view(-1, 1).repeat(n, 1, 1)
+    points = torch.einsum('ij,ikj->ikj', (ends - starts), points.repeat(1, 1, d).reshape(n, inbetween+2, 2)) + starts.unsqueeze(1)
+
+    delta_x = points[:, 1:] - points[:, :-1]
+    g = metric_func((points[:, 1:] + points[:, :-1]) / 2)
+
+    ds_squared = torch.einsum('abi,abij,abj->ab', delta_x, g, delta_x)
+    total_length = torch.sqrt(ds_squared).sum(dim=1)
+
+    return total_length
 
 
 def geodesic_path(start, end, metric_func, inbetween = 8, lr = 1e-2, initial_guess = None, max_iter = 1000):
