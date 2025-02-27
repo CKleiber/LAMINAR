@@ -10,7 +10,7 @@ from tqdm import tqdm
 from LAMINAR.Flow.planarCNF import PlanarCNF, train_PlanarCNF
 from LAMINAR.Flow.OTFlow import Phi, train_OTFlow, integrate
 from LAMINAR.utils.gaussian2uniform import sphere_to_gaussian, jacobian_gaussian_to_sphere, gaussian_to_sphere
-from LAMINAR.utils.geodesics import geodesic_length, geodesic_path, geodesic_straight_line
+from LAMINAR.utils.geodesics import geodesic_length, geodesic_path, geodesic_straight_line, geodesic_path2
 
 '''
 Implementation of the LAM algorithm using a normalizing flow to transform the data
@@ -217,7 +217,7 @@ class LAMINAR():
 
         dist = geodesic_length(path.reshape(1, path.shape[0], self.d), start, end, self.net.metric_tensor)
 
-        return dist.detach(), path
+        return dist[0].detach(), path
 
 
     def distance_smooth(self, start, end):
@@ -225,5 +225,5 @@ class LAMINAR():
         points, _ = geodesic_path(start, end, self.net.metric_tensor, lr=1e-2, initial_guess=path, max_iter=1000)
         dist = geodesic_length(points[1:-1].reshape(1, points[1:-1].shape[0], self.d), start, end, self.net.metric_tensor)
 
-        return dist.detach(), points.detach()
+        return dist[0].detach(), points.detach()
     

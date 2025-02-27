@@ -172,3 +172,62 @@ def geodesic_path(start, end, metric_func, inbetween = 8, lr = 1e-2, initial_gue
     points = torch.concatenate([start.reshape(1, 2), best_points, end.reshape(1, 2)], dim=0)
 
     return points, loss_hist
+
+
+def geodesic_path2(start, end, metric_func, inbetween = 8, lr = 1e-2, initial_guess = None, max_iter = 1000):
+    device = start.device
+
+    if initial_guess is None:
+        points = torch.linspace(0, 1, inbetween+2).to(device).view(-1, 1).to(device) * (end - start) + start
+        points = points[1:-1]
+    
+    else:
+        points = initial_guess[1:-1]
+        points = points.to(device)
+
+    points.requires_grad = True
+
+    opt = torch.optim.Adam([points], lr=lr)
+
+    loss_hist = []
+
+    best_loss = 9999999
+    lr_drop_count = 0
+    best_points = points
+
+    for _ in range(max_iter):
+        opt.zero_grad()
+
+        path = torch.concatenate([start.reshape(1, 2), points, end.reshape(1, 2)], dim=0)
+        loss = geodesic_equation(path, metric_func)
+
+        loss.backward()       
+
+        opt.step()
+
+        loss_hist.append(loss.item())
+
+        if loss.item() < best_loss:
+            best_loss = loss.item()
+            best_points = points.detach()
+            lr_drop_count = 0
+
+        else:
+            lr_drop_count += 1
+
+        if lr_drop_count > 50:
+            # drop learning rate and reset points to best points
+            lr_drop_count = 0
+            opt = torch.optim.Adam([points], lr=lr/2)
+            #points = best_points
+            #points.requires_grad = True
+            
+        if _ % 100 == 0:
+            print(f"Iteration {_} | Loss: {loss.item()}")
+        
+    print('Max iterations reached')
+    print(f"Final loss: {best_loss}")
+
+    points = torch.concatenate([start.reshape(1, 2), best_points, end.reshape(1, 2)], dim=0)
+
+    return points, loss_hist
