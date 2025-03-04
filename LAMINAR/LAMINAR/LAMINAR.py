@@ -1,16 +1,16 @@
 import torch
-import numpy as np
+#import numpy as np
 
-from typing import Union
+#from typing import Union
 from scipy.spatial import KDTree
 from scipy.sparse.csgraph import dijkstra
-from scipy.stats import shapiro, combine_pvalues    
-from pingouin import multivariate_normality
-from tqdm import tqdm
-from LAMINAR.Flow.planarCNF import PlanarCNF, train_PlanarCNF
+#from scipy.stats import shapiro, combine_pvalues    
+#from pingouin import multivariate_normality
+#from tqdm import tqdm
+#from LAMINAR.Flow.planarCNF import PlanarCNF, train_PlanarCNF
 from LAMINAR.Flow.OTFlow import Phi, train_OTFlow, integrate
-from LAMINAR.utils.gaussian2uniform import sphere_to_gaussian, jacobian_gaussian_to_sphere, gaussian_to_sphere
-from LAMINAR.utils.geodesics import geodesic_length, geodesic_path, geodesic_straight_line, geodesic_path2
+from LAMINAR.utils.gaussian2uniform import gaussian_to_sphere
+from LAMINAR.utils.geodesics import geodesic_length, geodesic_path, geodesic_straight_line
 
 '''
 Implementation of the LAM algorithm using a normalizing flow to transform the data
@@ -136,7 +136,7 @@ class LAMINAR():
 
 
     def check_expansion(self, points):
-        # for each point, check wether it is in the data, if so not the indices
+        # for each point, check wether it is in the data, if so note the indices
         # else add the point to the graph
 
         # check if the points are in the data
@@ -159,7 +159,7 @@ class LAMINAR():
             _, dist_matrix, predecessors = self.expand_graph(points[not_in_data])
 
             # note the indices
-            not_in_data_idx = torch.arange(self.n, self.n + points.shape[0])[not_in_data]
+            not_in_data_idx = torch.arange(self.n, self.n + not_in_data.shape[0]) #[not_in_data]
 
             # concat the windices of points in the data
             idx = torch.cat([at_indices, not_in_data_idx])
@@ -195,29 +195,38 @@ class LAMINAR():
         else:
             return idx, dists.detach()
     
-    def distance_approx(self, start, end):
+    def distance_approx(self, start, end, return_path=False):
         # expand graph by end and start points
         start = start.unsqueeze(0) if start.dim() == 1 else start
         end = end.unsqueeze(0) if end.dim() == 1 else end
         all_points = torch.cat([self.data, start, end], dim=0)
-        _, _, predecessors = self.expand_graph(torch.cat([start, end], dim=0))
+        #_, dist_matrix, predecessors = self.expand_graph(torch.cat([start, end], dim=0))
 
-        start_idx = self.n
-        end_idx = self.n + 1    
+        idx, dist_matrix, predecessors = self.check_expansion(torch.cat([start, end], dim=0))
 
-        path_idx = [end_idx]
-        current = end_idx
+        start_idx = idx[-2]
+        end_idx = idx[-1]    
 
-        while current != start_idx:
-            current = predecessors[start_idx, current]
-            path_idx.append(current)
+        if return_path:
+            path_idx = [end_idx]
+            current = end_idx
 
-        path_idx = torch.tensor(path_idx).flip(0)
-        path = all_points[path_idx]
+            while current != start_idx:
+                current = predecessors[start_idx, current]
+                path_idx.append(current)
 
-        dist = geodesic_length(path.reshape(1, path.shape[0], self.d), start, end, self.net.metric_tensor)
+            path_idx = torch.tensor(path_idx).flip(0)
+            path = all_points[path_idx]
 
-        return dist[0].detach(), path
+            #dist = geodesic_length(path.reshape(1, path.shape[0], self.d), start, end, self.net.metric_tensor)
+            dist = dist_matrix[start_idx, end_idx]
+
+            return dist, path
+        
+        else:
+            dist = dist_matrix[start_idx, end_idx]
+
+            return dist
 
 
     def distance_smooth(self, start, end):
