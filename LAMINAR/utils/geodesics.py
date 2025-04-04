@@ -105,7 +105,7 @@ def geodesic_straight_line(starts, ends, metric_func, inbetween = 10):
 
     # for every instance n, make a straight line between start and end
     points = torch.linspace(0, 1, inbetween+2).view(-1, 1).repeat(n, 1, 1).to(device)
-    points = torch.einsum('ij,ikj->ikj', (ends - starts), points.repeat(1, 1, d).reshape(n, inbetween+2, 2)) + starts.unsqueeze(1)
+    points = torch.einsum('ij,ikj->ikj', (ends - starts), points.repeat(1, 1, d).reshape(n, inbetween+2, d)) + starts.unsqueeze(1)
 
     delta_x = points[:, 1:] - points[:, :-1]
     g = metric_func((points[:, 1:] + points[:, :-1]) / 2)

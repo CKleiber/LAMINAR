@@ -166,33 +166,33 @@ def integrate(x, net, tspan , nt, stepper="rk4", alph =[1.0,1.0,1.0], intermedia
         #zFull = torch.zeros(*z.shape, nt+1, device=device, dtype=x.dtype) # make tensor of size z.shape[0], z.shape[1], nt
         #zFull[:,:,0] = z
         #zFull = torch.cat((z.unsqueeze(-1), zFull[:,:,1:]), dim=-1)
+        with torch.no_grad():
+            zFull = z.clone().reshape(z.shape[0], z.shape[1], 1)
+            if stepper == 'rk4':
+                for k in range(nt):
+                    #zFull[:,:,k+1] = stepRK4(odefun, zFull[:,:,k], net, alph, tk, tk+h)
+                    zFull = torch.cat((zFull, stepRK4(odefun, zFull[:,:,k], net, alph, tk, tk+h).unsqueeze(-1)), dim=-1)
+                    tk += h
+            elif stepper == 'rk1':
+                for k in range(nt):
+                    #zFull[:,:,k+1] = stepRK1(odefun, zFull[:,:,k], net, alph, tk, tk+h)
+                    zFull = torch.cat((zFull, stepRK4(odefun, zFull[:,:,k], net, alph, tk, tk+h).unsqueeze(-1)), dim=-1)
+                    tk += h
 
-        zFull = z.clone().reshape(z.shape[0], z.shape[1], 1)
-
-        if stepper == 'rk4':
-            for k in range(nt):
-                #zFull[:,:,k+1] = stepRK4(odefun, zFull[:,:,k], net, alph, tk, tk+h)
-                zFull = torch.cat((zFull, stepRK4(odefun, zFull[:,:,k], net, alph, tk, tk+h).unsqueeze(-1)), dim=-1)
-                tk += h
-        elif stepper == 'rk1':
-            for k in range(nt):
-                #zFull[:,:,k+1] = stepRK1(odefun, zFull[:,:,k], net, alph, tk, tk+h)
-                zFull = torch.cat((zFull, stepRK4(odefun, zFull[:,:,k], net, alph, tk, tk+h).unsqueeze(-1)), dim=-1)
-                tk += h
-
-        return zFull
+            return zFull
 
     else:
-        if stepper == 'rk4':
-            for k in range(nt):
-                z = stepRK4(odefun, z, net, alph, tk, tk+h)
-                tk += h
-        elif stepper == 'rk1':
-            for k in range(nt):
-                z = stepRK1(odefun, z, net, alph, tk, tk+h)
-                tk += h
+        with torch.no_grad():
+            if stepper == 'rk4':
+                for k in range(nt):
+                    z = stepRK4(odefun, z, net, alph, tk, tk+h)
+                    tk += h
+            elif stepper == 'rk1':
+                for k in range(nt):
+                    z = stepRK1(odefun, z, net, alph, tk, tk+h)
+                    tk += h
 
-        return z
+            return z
 
     # return in case of error
     return -1
@@ -340,8 +340,10 @@ class Phi(nn.Module):
     
         # Integrate over time in steps
         #alph = [1.0, 100.0, 5.0] # not needed here?
+        #print(x.shape)
         zFull = integrate(x, self, [0, 1], nt=steps, stepper="rk4", intermediates=True)[:, :self.d, :-1].to(self.device)
-    
+        #zFull = torch.randn(x.shape[0], x.shape[1], steps, device=self.device)
+
         # Prepare data for batch processing
         dim = x.shape[1]
         batch_size = x.shape[0]
@@ -363,6 +365,7 @@ class Phi(nn.Module):
     
         # Compute the Hessians function for all arguments but the last
         hess = vmap(torch.func.hessian(func))(x_in)
+        #hess = torch.randn(batch_size, time_dim, self.d+1, self.d+1, device=self.device)
         hess = hess.reshape(batch_size, time_dim, self.d+1, self.d+1)
     
         # Extract spatial dimensions and time steps
@@ -392,7 +395,7 @@ class Phi(nn.Module):
         #x = x.flatten(0, 1)
         x = x.reshape(-1, x.shape[-1])
 
-        g = self.fullHessian(x, 15)
+        g = self.fullHessian(x, 8)
 
         g = g.reshape(*x_new_dims)
         return g

@@ -110,7 +110,8 @@ class LAMINAR():
 
         expanded_data_pushed = torch.concatenate([self.X_pushed, additional_points_pushed], dim=0)
 
-        kdt = KDTree(expanded_data_pushed)
+        #kdt = KDTree(expanded_data_pushed)
+        kdt = KDTree(self.X_pushed)
         _, neighs = kdt.query(additional_points_pushed, k=self.k_neigh)
 
         starts = additional_points.repeat_interleave(self.k_neigh, dim=0)
