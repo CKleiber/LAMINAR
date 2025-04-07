@@ -395,9 +395,24 @@ class Phi(nn.Module):
         #x = x.flatten(0, 1)
         x = x.reshape(-1, x.shape[-1])
 
-        g = self.fullHessian(x, 8)
+        # if x is too large, split up in batches of size 1024
+        if x.shape[0] > 1024:
+            num_batches = int(x.shape[0] / 1024) + 1
+            batch_size = int(x.shape[0] / num_batches)
+            hess = torch.zeros(x.shape[0], x.shape[1], x.shape[1], device=self.device)
 
-        g = g.reshape(*x_new_dims)
+            for i in range(num_batches):
+                start_idx = i * batch_size
+                end_idx = min((i + 1) * batch_size, x.shape[0])
+                hess[start_idx:end_idx] = self.fullHessian(x[start_idx:end_idx], 8)
+
+            hess = hess.reshape(-1, x.shape[1], x.shape[1])
+
+        else:
+            # compute the full Hessian
+            hess = self.fullHessian(x, 8)
+
+        g = hess.reshape(*x_new_dims)
         return g
     
 
@@ -456,7 +471,7 @@ def compute_loss(net, x, nt):
     return Jc, cs
 
 
-def train_OTFlow(net, optimizer, X_train, X_val, epochs = 1500, nt=8, nt_val=8, drop_freq=100, lr_drop=2):
+def train_OTFlow(net, optimizer, X_train, X_val, epochs = 1500, nt=8, nt_val=8, drop_freq=100, lr_drop=2, batch_size=1024):
     net.train()
 
     loss_hist = {
@@ -467,15 +482,24 @@ def train_OTFlow(net, optimizer, X_train, X_val, epochs = 1500, nt=8, nt_val=8, 
     val_best = 9999999
     epoch_best = 0
     for itr in range(0, epochs):
-        optimizer.zero_grad()
-        loss, cost = compute_loss(net, X_train, nt)
-        loss.backward()
-        optimizer.step()
+        #batches
+        loss = 0.0
+        for batch_start in range(0, X_train.shape[0], batch_size):
+            batch_end = min(batch_start + batch_size, X_train.shape[0])
+            batch_data = X_train[batch_start:batch_end]
+
+            optimizer.zero_grad()
+            l, cost = compute_loss(net, batch_data, nt)
+            l.backward()
+            optimizer.step()
+
+            loss += l.item() * (batch_end - batch_start) / X_train.shape[0]
+
         if (itr % 100 == 99) or (itr == 0):
             net.eval()
-            Jc, cs = compute_loss(net, X_train, nt)
+            #Jc, cs = compute_loss(net, X_train, nt)
             Jcval, csval = compute_loss(net, X_val, nt_val)
-            print(f"Iteration {itr} | Train Loss: {Jc.item()} | Validation Loss: {Jcval.item()}")
+            print(f"Iteration {itr} | Train Loss: {loss} | Validation Loss: {Jcval.item()}")
             if Jcval < val_best:
                 val_best = Jcval
                 epoch_best = 0
@@ -490,7 +514,7 @@ def train_OTFlow(net, optimizer, X_train, X_val, epochs = 1500, nt=8, nt_val=8, 
                 break
             net.train()
 
-            loss_hist['train'].append(Jc.item())
+            loss_hist['train'].append(loss)
             loss_hist['val'].append(Jcval.item())
 
         if itr % drop_freq == 0:

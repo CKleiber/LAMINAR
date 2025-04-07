@@ -27,7 +27,8 @@ class LAMINAR():
                  drop_freq = 100,
                  lr_drop = 2,
                  k_neigh = 10,
-                 epochs = 1500):
+                 epochs = 1500,
+                 batch_size = 1024):
         
         self.device = data.device
         self.data = data
@@ -43,6 +44,8 @@ class LAMINAR():
         self.k_neigh = k_neigh 
         self.epochs = epochs
 
+        self.batch_size = batch_size
+
         self.d = self.data.shape[1]
         self.n = self.data.shape[0]
 
@@ -55,7 +58,7 @@ class LAMINAR():
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
 
         # train the model
-        self.loss_hist = train_OTFlow(self.net, self.optimizer, self.data_train, self.data_val, self.epochs, self.nt, self.nt_val, self.drop_freq, self.lr_drop)
+        self.loss_hist = train_OTFlow(self.net, self.optimizer, self.data_train, self.data_val, self.epochs, self.nt, self.nt_val, self.drop_freq, self.lr_drop, self.batch_size)
 
         # set up the graph
         self.set_up_graph()
