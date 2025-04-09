@@ -360,7 +360,6 @@ class Phi(nn.Module):
 
         # Define function for which to compute the Hessian
         def func(batch_x_in):
-            
             return self.forward(batch_x_in.reshape(1, self.d+1)).sum()
     
         # Compute the Hessians function for all arguments but the last
@@ -385,7 +384,7 @@ class Phi(nn.Module):
 
         metric_t = metric_t + 1e-6 * torch.eye(dim, device=self.device).unsqueeze(0)
 
-        return metric_t #, hess, unif
+        return metric_t.detach() #, hess, unif
     
     def metric_tensor(self, x):
         # flatten x and reshape into original shape
@@ -468,7 +467,9 @@ def OTFlowProblem(x, Phi, tspan, nt, stepper="rk4", alph=[1.0, 1.0, 1.0]):
 
 def compute_loss(net, x, nt):
     Jc, cs = OTFlowProblem(x, net, [0, 1], nt=nt, stepper="rk4", alph=net.alph)
-    return Jc, cs
+    # detach cs and throw away
+    cs = [c.detach().cpu().numpy() for c in cs]
+    return Jc #, cs
 
 
 def train_OTFlow(net, optimizer, X_train, X_val, epochs = 1500, nt=8, nt_val=8, drop_freq=100, lr_drop=2, batch_size=1024):
@@ -489,7 +490,7 @@ def train_OTFlow(net, optimizer, X_train, X_val, epochs = 1500, nt=8, nt_val=8, 
             batch_data = X_train[batch_start:batch_end]
 
             optimizer.zero_grad()
-            l, cost = compute_loss(net, batch_data, nt)
+            l = compute_loss(net, batch_data, nt)
             l.backward()
             optimizer.step()
 
@@ -498,8 +499,9 @@ def train_OTFlow(net, optimizer, X_train, X_val, epochs = 1500, nt=8, nt_val=8, 
         if (itr % 100 == 99) or (itr == 0):
             net.eval()
             #Jc, cs = compute_loss(net, X_train, nt)
-            Jcval, csval = compute_loss(net, X_val, nt_val)
-            print(f"Iteration {itr} | Train Loss: {loss} | Validation Loss: {Jcval.item()}")
+            with torch.no_grad():
+                Jcval = compute_loss(net, X_val, nt_val)
+                print(f"Iteration {itr} | Train Loss: {loss} | Validation Loss: {Jcval.item()}")
             if Jcval < val_best:
                 val_best = Jcval
                 epoch_best = 0

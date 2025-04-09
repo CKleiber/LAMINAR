@@ -190,7 +190,7 @@ class LAMINAR():
         # calculate the k nearest points and their distance for each start point
         # expand the graph with the new points
         idx_points, dist_matrix, _ = self.check_expansion(start)
-        dists = torch.tensor(dist_matrix[idx_points]) # shape (m, n)
+        dists = dist_matrix[idx_points] # shape (m, n)
         dists, idx = torch.sort(dists, dim=1)
     
         if k is not None:
