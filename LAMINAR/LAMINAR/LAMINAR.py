@@ -1,9 +1,10 @@
 import torch
-#import numpy as np
+import numpy as np
 
 #from typing import Union
 from scipy.spatial import KDTree
 from scipy.sparse.csgraph import dijkstra
+from scipy.sparse import csr_matrix
 #from scipy.stats import shapiro, combine_pvalues    
 #from pingouin import multivariate_normality
 #from tqdm import tqdm
@@ -11,6 +12,7 @@ from scipy.sparse.csgraph import dijkstra
 from LAMINAR.Flow.OTFlow import Phi, train_OTFlow, integrate
 from LAMINAR.utils.gaussian2uniform import gaussian_to_sphere
 from LAMINAR.utils.geodesics import geodesic_length, geodesic_path, geodesic_straight_line
+from LAMINAR.utils.dijkstra import dijkstra as dijkstra_laminar
 
 '''
 Implementation of the LAM algorithm using a normalizing flow to transform the data
@@ -28,7 +30,8 @@ class LAMINAR():
                  lr_drop = 2,
                  k_neigh = 10,
                  epochs = 1500,
-                 batch_size = 1024):
+                 batch_size = 1024,
+                 save_distance_matrix = False):
         
         self.device = data.device
         self.data = data
@@ -45,6 +48,8 @@ class LAMINAR():
         self.epochs = epochs
 
         self.batch_size = batch_size
+
+        self.save_distance_matrix = save_distance_matrix
 
         self.d = self.data.shape[1]
         self.n = self.data.shape[0]
@@ -67,41 +72,37 @@ class LAMINAR():
     def switch_device(self, device):
         self.device = device
         self.net.to(device)
+        self.data = self.data.to(device)
+        
     
-
     def set_up_graph(self):
         self.X_pushed = integrate(self.data, self.net, [0, 1], nt=self.nt, stepper="rk4", alph=self.alph, intermediates=False).cpu().detach()[:, :self.d]
         self.X_pushed = gaussian_to_sphere(self.X_pushed)
 
         kdt = KDTree(self.X_pushed)
-        dists, neighs = kdt.query(self.X_pushed, k=self.k_neigh)
+        _, neighs = kdt.query(self.X_pushed, k=self.k_neigh)
 
         # get all start points
         starts = self.data[neighs[:, 0]]
         # repeat every point in starts for k_neigh times so that the same point appears k_neigh times right after each other
         starts = starts.repeat_interleave(self.k_neigh, dim=0)
-
         ends = self.data[neighs.flatten()]
 
-        distances = geodesic_straight_line(starts, ends, self.net.metric_tensor, inbetween=1)
-
+        distances = geodesic_straight_line(starts, ends, self.net.metric_tensor, inbetween=1).flatten()
         row_indices = torch.arange(neighs.shape[0]).repeat_interleave(neighs.shape[1])
         col_indices = neighs.flatten()
-        dist_values = distances.flatten()
 
-        self.graph = torch.zeros(self.n, self.n).to(self.device)
-        self.graph[row_indices, col_indices] = dist_values
+        self.graph = csr_matrix((distances.cpu().numpy().astype(np.float32), (row_indices, col_indices)), shape=(self.n, self.n))
 
-        # graph symmetric, by transposition and insertion of values which are not yet in the graph
-        graph_sub_transpose = self.graph - self.graph.t()
+        # symmetrize 
+        self.graph = self.graph.maximum(self.graph.transpose()).tocsc()
 
-        # set positive values to zero
-        graph_sub_transpose[graph_sub_transpose > 0] = 0
-        self.graph = self.graph - graph_sub_transpose
+        if self.save_distance_matrix:
+            self.dist_matrix, self.predecessors = dijkstra(self.graph, return_predecessors=True)
+            self.dist_matrix = self.dist_matrix.astype(np.float32)
+            self.predecessors = self.predecessors.astype(np.int32)
 
-        self.dist_matrix, self.predecessors = dijkstra(self.graph.detach().cpu().numpy(), return_predecessors=True)
-        
-
+    
     def expand_graph(self, additional_points):
         # additional_points is an array of shape (m, d) of points which temporarily need to be added to the graph
         # returns the expanded graph, the distance matrix and the predecessors
@@ -111,7 +112,7 @@ class LAMINAR():
         additional_points_pushed = integrate(additional_points, self.net, [0, 1], nt=self.nt_val, stepper="rk4", alph=self.alph, intermediates=False).cpu().detach()[:, :self.d]
         additional_points_pushed = gaussian_to_sphere(additional_points_pushed)
 
-        expanded_data_pushed = torch.concatenate([self.X_pushed, additional_points_pushed], dim=0)
+        #expanded_data_pushed = torch.concatenate([self.X_pushed, additional_points_pushed], dim=0)
 
         #kdt = KDTree(expanded_data_pushed)
         kdt = KDTree(self.X_pushed)
@@ -121,22 +122,55 @@ class LAMINAR():
         ends = expanded_data[neighs.flatten()]
 
         distances = geodesic_straight_line(starts, ends, self.net.metric_tensor, inbetween=1)
-
         row_indices = torch.arange(neighs.shape[0]).repeat_interleave(neighs.shape[1])
         col_indices = neighs.flatten()
 
-        expanded_graph = torch.zeros(expanded_data.shape[0], expanded_data.shape[0]).to(self.device)
-        expanded_graph[:self.n, :self.n] = self.graph
-        expanded_graph[row_indices + self.n, col_indices] = distances
+        # expanded graph is self.graph with additional elements
 
-        # graph
-        expanded_graph_sub_transpose = expanded_graph - expanded_graph.t()
-        expanded_graph_sub_transpose[expanded_graph_sub_transpose > 0] = 0
-        expanded_graph = expanded_graph - expanded_graph_sub_transpose
+        expanded_graph = csr_matrix((distances.cpu().numpy().astype(np.float32), (row_indices + self.n, col_indices)), shape=(expanded_data.shape[0], expanded_data.shape[0]))
+        expanded_graph = expanded_graph.tolil().astype(np.float32)
 
-        dist_matrix, predecessors = dijkstra(expanded_graph.detach().cpu().numpy(), return_predecessors=True)
+        # print info of expanded graph
+        #print("Expanded graph shape: ", expanded_graph.shape)
+        #print("Expanded graph type: ", expanded_graph.dtype)
+        #
+        # same for graph
+        #print("Graph shape: ", self.graph.shape)
+        #print("Graph type: ", self.graph.dtype)
 
-        return expanded_graph, dist_matrix, predecessors 
+
+        #expanded_graph[:self.n, :self.n] = self.graph
+        self.graph = self.graph.tolil().astype(np.float32)
+
+        block_size = 1024  # Adjust block size based on available memory
+        for i in range(0, self.n, block_size):
+            for j in range(0, self.n, block_size):
+                # Calculate the actual block size for the current slice
+                i_end = min(i + block_size, self.n)
+                j_end = min(j + block_size, self.n)
+
+                # Print shapes for debugging
+                #print(f"Assigning block: [{i}:{i_end}, {j}:{j_end}]")
+                #print(f"Source shape: {self.graph[i:i_end, j:j_end].shape}")
+                #print(f"Target shape: {expanded_graph[i:i_end, j:j_end].shape}")
+
+                # Assign the block
+                expanded_graph[i:i_end, j:j_end] = self.graph[i:i_end, j:j_end]
+
+        expanded_graph = expanded_graph.tocsr()
+        expanded_graph = expanded_graph.maximum(expanded_graph.transpose()).tocsc()
+
+        self.graph = self.graph.tocsr()
+
+        if self.save_distance_matrix:
+            dist_matrix, predecessors = dijkstra(expanded_graph, return_predecessors=True)
+            dist_matrix = dist_matrix.astype(np.float32)
+            predecessors = predecessors.astype(np.int32)
+
+            return expanded_graph, dist_matrix, predecessors 
+        
+        else:
+            return expanded_graph, None, None
 
 
     def check_expansion(self, points):
@@ -160,7 +194,7 @@ class LAMINAR():
         # if not_in_data is not empty
         if not_in_data.shape[0] != 0:
             # expand the graph
-            _, dist_matrix, predecessors = self.expand_graph(points[not_in_data])
+            expanded_graph, dist_matrix, predecessors = self.expand_graph(points[not_in_data])
 
             # note the indices
             not_in_data_idx = torch.arange(self.n, self.n + not_in_data.shape[0]) #[not_in_data]
@@ -168,17 +202,26 @@ class LAMINAR():
             # concat the windices of points in the data
             idx = torch.cat([at_indices, not_in_data_idx])
 
-            # make the distance matrix a tensor and return
-            dist_matrix = torch.tensor(dist_matrix)
+            if self.save_distance_matrix:
+                # make the distance matrix a tensor and return
+                dist_matrix = torch.tensor(dist_matrix)
 
-            return idx, dist_matrix, predecessors
+                return expanded_graph, idx.tolist(), dist_matrix, predecessors
+            
+            else:
+                return expanded_graph, idx.tolist(), None, None
         
         else:
             # no extension needed, just return the indices and the distance matrix
             idx = at_indices
-            dist_matrix = torch.tensor(self.dist_matrix)
 
-            return idx, dist_matrix, self.predecessors
+            if self.save_distance_matrix:
+                dist_matrix = torch.tensor(self.dist_matrix)
+
+                return self.graph, idx.tolist(), dist_matrix, self.predecessors
+            
+            else:
+                return self.graph, idx.tolist(), None, None
 
     
     def query(self, start, k=None):     # TODO expand to add point besides the data
@@ -189,52 +232,68 @@ class LAMINAR():
 
         # calculate the k nearest points and their distance for each start point
         # expand the graph with the new points
-        idx_points, dist_matrix, _ = self.check_expansion(start)
-        dists = dist_matrix[idx_points] # shape (m, n)
-        dists, idx = torch.sort(dists, dim=1)
-    
-        if k is not None:
-            return idx[:, :k], dists[:, :k].detach()
+        expanded_graph, idx_points, dist_matrix, _ = self.check_expansion(start)
+
+        if self.save_distance_matrix:
+            dists = dist_matrix[idx_points].detach() # shape (m, n)
         
         else:
-            return idx, dists.detach()
+            dists, _ = dijkstra_laminar(expanded_graph, idx_points, [i for i in range(self.n)])
+            dists = torch.tensor(np.array(dists)).reshape(-1, self.n)
+
+        dists, idx = torch.sort(dists, dim=1)
+        if k is not None:
+            return idx[:, :k], dists[:, :k]
+
+        else:
+            return idx, dists
+
     
     def distance_approx(self, start, end, return_path=False):
         # expand graph by end and start points
         start = start.unsqueeze(0) if start.dim() == 1 else start
         end = end.unsqueeze(0) if end.dim() == 1 else end
         all_points = torch.cat([self.data, start, end], dim=0)
+        
         #_, dist_matrix, predecessors = self.expand_graph(torch.cat([start, end], dim=0))
 
-        idx, dist_matrix, predecessors = self.check_expansion(torch.cat([start, end], dim=0))
+        expanded_graph, idx, dist_matrix, predecessors = self.check_expansion(torch.cat([start, end], dim=0))
 
         start_idx = idx[-2]
         end_idx = idx[-1]    
+    
+        if self.save_distance_matrix:
+            if return_path:
+                path_idx = [end_idx]
+                current = end_idx
 
-        if return_path:
-            path_idx = [end_idx]
-            current = end_idx
+                while current != start_idx:
+                    current = predecessors[start_idx, current]
+                    path_idx.append(current)
 
-            while current != start_idx:
-                current = predecessors[start_idx, current]
-                path_idx.append(current)
+                path_idx = torch.tensor(path_idx).flip(0)
+                path = all_points[path_idx]
 
-            path_idx = torch.tensor(path_idx).flip(0)
-            path = all_points[path_idx]
+                #dist = geodesic_length(path.reshape(1, path.shape[0], self.d), start, end, self.net.metric_tensor)
+                dist = dist_matrix[start_idx, end_idx]
 
-            #dist = geodesic_length(path.reshape(1, path.shape[0], self.d), start, end, self.net.metric_tensor)
-            dist = dist_matrix[start_idx, end_idx]
+                return dist, path
 
-            return dist, path
-        
+            else:
+                dist = dist_matrix[start_idx, end_idx]
+                return dist
+            
         else:
-            dist = dist_matrix[start_idx, end_idx]
-
-            return dist
+            dists, path_idx = dijkstra_laminar(expanded_graph, [start_idx], [end_idx])
+            if return_path:
+                paths = all_points[path_idx[0]]
+                return np.array(dists[0]), paths
+            else:   
+                return np.array(dists[0])
 
 
     def distance_smooth(self, start, end):
-        _, path = self.distance_approx(start, end)
+        _, path = self.distance_approx(start, end, return_path=True)
         points, _ = geodesic_path(start, end, self.net.metric_tensor, lr=1e-2, initial_guess=path, max_iter=1000)
         dist = geodesic_length(points[1:-1].reshape(1, points[1:-1].shape[0], self.d), start, end, self.net.metric_tensor)
 

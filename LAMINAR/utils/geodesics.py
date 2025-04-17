@@ -173,3 +173,5 @@ def geodesic_path(start, end, metric_func, inbetween = 8, lr = 1e-2, initial_gue
     points = torch.concatenate([start.reshape(1, 2), best_points, end.reshape(1, 2)], dim=0)
 
     return points, loss_hist
+
+# TODO: try parameterized geodesics with neural networks
