@@ -17,7 +17,7 @@ readme = "README.md"
 maintainers = [
     { name = "Christian Kleiber", email = "christian.kleiber@stud.uni-heidelberg.de" },
 ]
-version = "0.6.6"
+version = "0.6.7"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 classifiers = [
@@ -33,7 +33,8 @@ dependencies = [
     "scipy",
     "matplotlib",
     "scikit-learn",
-    "pingouin"
+    "pingouin",
+    "numba"
 ]
 
 [project.optional-dependencies]
