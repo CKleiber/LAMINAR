@@ -11,7 +11,7 @@ from scipy.sparse import csr_matrix
 #from LAMINAR.Flow.planarCNF import PlanarCNF, train_PlanarCNF
 from LAMINAR.Flow.OTFlow import Phi, train_OTFlow, integrate
 from LAMINAR.utils.gaussian2uniform import gaussian_to_sphere
-from LAMINAR.utils.geodesics import geodesic_length, geodesic_path, geodesic_straight_line
+from LAMINAR.utils.geodesics import action, geodesic_length, geodesic_regression_function, geodesic_straight_line
 from LAMINAR.utils.dijkstra import dijkstra as dijkstra_laminar
 
 '''
@@ -93,7 +93,7 @@ class LAMINAR():
         col_indices = neighs.flatten()
 
         self.graph = csr_matrix((distances.cpu().numpy().astype(np.float32), (row_indices, col_indices)), shape=(self.n, self.n))
-
+    
         # symmetrize 
         self.graph = self.graph.maximum(self.graph.transpose()).tocsc()
 
@@ -292,10 +292,18 @@ class LAMINAR():
                 return np.array(dists[0])
 
 
-    def distance_smooth(self, start, end):
+    def distance_smooth(self, start, end, n, num_hidden=256, num_layers=5):
         _, path = self.distance_approx(start, end, return_path=True)
-        points, _ = geodesic_path(start, end, self.net.metric_tensor, lr=1e-2, initial_guess=path, max_iter=1000)
-        dist = geodesic_length(points[1:-1].reshape(1, points[1:-1].shape[0], self.d), start, end, self.net.metric_tensor)
+        
+        f = geodesic_regression_function(dim=self.d, num_hidden=num_hidden, num_layers=num_layers)
+        
+        f.initial_fit(path)
+        _ = f.fit_to_geodesic(self.net.metric_tensor)
 
-        return dist[0].detach(), points.detach()
+        path_reg = f.forward(start, end, torch.linspace(0, 1, n))
+        
+        dist = geodesic_length(path_reg[1:-1].reshape(1, path_reg[1:-1].shape[0], self.d), start, end, self.net.metric_tensor)
+        act = action(path_reg, self.net.metric_tensor)
+
+        return dist[0].detach(), act.detach(), path_reg.detach()
     

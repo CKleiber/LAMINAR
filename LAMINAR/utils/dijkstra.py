@@ -24,16 +24,6 @@ def _dijkstra(n, indptr, indices, data, start_nodes, end_nodes):
         distances[start] = 0.0
 
         for _ in range(n):
-            # Stop early, if all end nodes have been visited
-            all_end_nodes_visited = True
-            for end in end_nodes:
-                if not visited[end]:
-                    all_end_nodes_visited = False
-                    break
-                
-            if all_end_nodes_visited:
-                break
-
             # Find the node with the smallest distance that hasn't been visited
             min_dist = inf
             u = -1
@@ -70,4 +60,4 @@ def _dijkstra(n, indptr, indices, data, start_nodes, end_nodes):
         distance_array.append(end_distances)
         path_array.append(end_paths)
 
-    return distance_array, path_array
+    return distance_array, path_array    

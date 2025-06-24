@@ -1,8 +1,8 @@
 import torch
 from torch.func import vmap
+import os
 
-
-def christoffel_symbol(x, metric_func, eps=1e-6, numeric_diff = True):
+def christoffel_symbol(x, metric_func, eps=1e-6, numeric_diff=True):
     '''
     Calculate the christoffel symbols at the locations x (shape: n, dim) for the metric given by metric_func
     '''
@@ -54,7 +54,7 @@ def christoffel_symbol(x, metric_func, eps=1e-6, numeric_diff = True):
 
     return christoffel
 
-def geodesic_equation(path, metric_func, eps=1e-6):
+def geodesic_equation(path, metric_func, eps=1e-6, numeric_diff=True):
 
     # velocity at each point
     v = (path[2:] - path[:-2])/2 # shape: n-2, dim
@@ -63,7 +63,7 @@ def geodesic_equation(path, metric_func, eps=1e-6):
     a = path[2:] - 2*path[1:-1] + path[:-2] # shape: n-2, dim
 
     # calculate christoffel symbols at each point
-    christoffel = christoffel_symbol(path[1:-1], metric_func, eps=eps, numeric_diff=True) # shape: n-2, dim, dim, dim
+    christoffel = christoffel_symbol(path[1:-1], metric_func, eps=eps, numeric_diff=numeric_diff) # shape: n-2, dim, dim, dim
 
     # calculate the geodesic equation
     delta_mu = torch.einsum('ndij,ni,nj->nd', christoffel, v, v) # shape: n-2, dim
@@ -116,62 +116,172 @@ def geodesic_straight_line(starts, ends, metric_func, inbetween = 10):
     return total_length
 
 
-def geodesic_path(start, end, metric_func, inbetween = 8, lr = 1e-2, initial_guess = None, max_iter = 1000):
-    device = start.device
+def action(path, metric_function):
+    v = (path[2:] - path[:-2])/2
+    v_start = (path[1] - path[0])
+    v_end = (path[-1] - path[-2]) 
 
-    if initial_guess is None:
-        points = torch.linspace(0, 1, inbetween+2).to(device).view(-1, 1).to(device) * (end - start) + start
-        points = points[1:-1]
+    v = torch.cat((v_start[None], v, v_end[None]), dim=0)
+
+    g = metric_function(path)
+
+    inner_prod = torch.einsum('ni,nij,nj->n', v, g, v)
+
+    s = torch.sum(inner_prod, dim=0) * 0.5
+    s *= path.shape[0]
+    return s   
+
+
+# returns a parameterized function taking stat point, end point and time, and returns the point a a time
+# gamma_eta(x, y, t) = (1-t)*x + t*y + t * (1-t) * phi_eta(x, y, t)
+# phi is a neural network
+
+class geodesic_regression_function(torch.nn.Module):
+    def __init__(self, dim, num_hidden=10, num_layers=2):
+        super().__init__()
+
+        self.phi = torch.nn.Sequential(
+            torch.nn.Linear(2*dim + 1, num_hidden),
+            torch.nn.ReLU(),
+            *[
+                torch.nn.Sequential(
+                    torch.nn.Linear(num_hidden, num_hidden),
+                    torch.nn.ReLU()
+                )
+                for _ in range(num_layers-1)
+            ],
+            torch.nn.Linear(num_hidden, dim)
+        )
+
+    def forward(self, x, y, t):
+        # x is shape 1, dim
+        # y is shape 1, dim
+        # t is shape n_steps
+        x = x.repeat(t.shape[0], 1)
+        y = y.repeat(t.shape[0], 1)
+        t = t.reshape(len(t), 1) # shape n_steps, 1
+
+        phi = self.phi(torch.cat([x, y, t], dim=1))
+        return ((1-t)*x + t*y + t*(1-t)*phi)
     
-    else:
-        points = initial_guess[1:-1]
-        points = points.to(device)
+    def initial_fit(self, points):
+        self.x = x = points[0]
+        self.y = y = points[-1]
 
-    points.requires_grad = True
 
-    opt = torch.optim.Adam([points], lr=lr)
+        t = torch.linspace(0, 1, len(points)).reshape(-1, 1)[1:-1]  # shape n_steps, 1
 
-    loss_hist = []
+        func_target = points[1:-1]
 
-    best_loss = 9999999
-    lr_drop_count = 0
-    best_points = points
+        x.requires_grad = True
+        y.requires_grad = True
+        t.requires_grad = True
 
-    for _ in range(max_iter):
-        opt.zero_grad()
+        optim = torch.optim.Adam(self.parameters(), lr=1e-4)
+        loss_fn = torch.nn.MSELoss()
 
-        path = torch.concatenate([start.reshape(1, 2), points, end.reshape(1, 2)], dim=0)
-        loss = geodesic_equation(path, metric_func)
+        self.phi.train()
 
-        loss.backward()       
+        best_loss = 1e10
+        counter = 0
 
-        opt.step()
+        for i in range(25000):
+            optim.zero_grad()
+            pred = self.forward(x, y, t)
+            loss = loss_fn(pred, func_target) # per point
+            loss.backward()
+            optim.step()
 
-        loss_hist.append(loss.item())
+            current_loss = loss.item()
+            #print(current_loss)
 
-        if loss.item() < best_loss:
-            best_loss = loss.item()
-            best_points = points.detach()
-            lr_drop_count = 0
+            if current_loss < best_loss:
+                best_loss = current_loss
 
-        else:
-            lr_drop_count += 1
+            elif current_loss > best_loss:
+                counter += 1
+                if counter > 100:
+                    # reduce learning rate to 10%
+                    
+                    for param_group in optim.param_groups:
+                        if param_group['lr'] > 1e-8:
+                            param_group['lr'] *= 0.1
+                            print(f'Learning rate reduced to {param_group["lr"]}')
+                            counter = 0
 
-        if lr_drop_count > 50:
-            # drop learning rate and reset points to best points
-            lr_drop_count = 0
-            opt = torch.optim.Adam([points], lr=lr/2)
-            points = best_points
-            points.requires_grad = True
-            
-        if _ % 100 == 0:
-            print(f"Iteration {_} | Loss: {loss.item()}")
+                if counter > 100:
+                    break
+
+            # if approximation is good enough, break
+            if loss.item() < 1.5e-3:
+                break
+
+        print(f'Final loss: {current_loss}')
+        self.phi.eval()
+
+    def fit_to_geodesic(self, metric_func):
+        t = torch.linspace(0, 1, 100).reshape(-1, 1)
+        optim = torch.optim.Adam(self.parameters(), lr=1e-5)
+
+        best_loss = 1e10
+        best_phi = None
+
+        self.phi.train()
         
-    print('Max iterations reached')
-    print(f"Final loss: {best_loss}")
+        l_list = []
 
-    points = torch.concatenate([start.reshape(1, 2), best_points, end.reshape(1, 2)], dim=0)
+        n_t = 100
+        t = torch.linspace(0, 1, n_t).reshape(-1, 1)
 
-    return points, loss_hist
+        counter = 0
 
-# TODO: try parameterized geodesics with neural networks
+        for i in range(1000):
+            
+            optim.zero_grad()
+            pred = self.forward(self.x, self.y, t)
+    
+            loss = action(pred, metric_func) 
+            
+            current_loss = loss.item()
+            #print(current_loss)
+            l_list.append(current_loss)
+
+            if current_loss < best_loss:
+                best_loss = current_loss
+                torch.save(self.phi.state_dict(), 'best.pt')
+            
+            loss.backward()
+            optim.step()
+
+            if current_loss > best_loss:
+                counter += 1
+                if counter > 25:
+                    # reduce learning rate to 10%
+                    
+                    for param_group in optim.param_groups:
+                        if param_group['lr'] > 1e-8:
+                            param_group['lr'] *= 0.1
+                            print(f'Learning rate reduced to {param_group["lr"]}')
+                            counter = 0
+                
+                if counter > 25:
+                    break
+                    
+        print(f'Best loss: {best_loss}')
+
+        best_phi = torch.load('best.pt')
+        self.phi.load_state_dict(best_phi)
+        # delete best.pt file
+        os.remove('best.pt')
+        self.phi.eval()
+
+        #print(self.phi.state_dict())
+        #print(best_phi)
+
+
+        with torch.no_grad():  # Ensure no gradients are computed
+            pred = self.forward(self.x, self.y, t)
+            final_loss = action(pred, metric_func)
+            print(f'Final loss: {final_loss.item()}')
+
+        return l_list
