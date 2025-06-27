@@ -79,6 +79,8 @@ def geodesic_length(points, start, end, metric_func):
     # allow calculations of multiple paths with points as intermediate points, while start and end are fixed
     n_paths = points.shape[0]
 
+    dim = points.shape[2]
+
     # concat start, points, end
     paths = torch.cat([start.repeat(n_paths, 1, 1), points, end.repeat(n_paths, 1, 1)], dim=1)
 
@@ -88,6 +90,9 @@ def geodesic_length(points, start, end, metric_func):
     g = metric_func((paths[:, 1:]+paths[:, :-1])/2)
 
     ds_squared = torch.einsum('abi,abij,abj->ab', delta_x, g, delta_x)
+
+    g_det = torch.linalg.det(g)
+    ds_squared = ds_squared * g_det**(-1/dim)
 
     total_length = torch.sqrt(ds_squared).sum(dim=1)
 
@@ -111,6 +116,10 @@ def geodesic_straight_line(starts, ends, metric_func, inbetween = 10):
     g = metric_func((points[:, 1:] + points[:, :-1]) / 2)
 
     ds_squared = torch.einsum('abi,abij,abj->ab', delta_x, g, delta_x)
+
+    g_det = torch.linalg.det(g)
+    ds_squared = ds_squared * g_det**(-1/d)
+
     total_length = torch.sqrt(ds_squared).sum(dim=1)
 
     return total_length
