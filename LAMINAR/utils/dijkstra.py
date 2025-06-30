@@ -2,6 +2,7 @@ import numpy as np
 import numba as nb
 
 
+# jit compiled dijkstra adjusted for sparse matrices and LAMINAR's use case
 def dijkstra(graph, start_nodes, end_nodes):
     n = graph.shape[0]
     indptr = graph.indptr.astype(np.int32)

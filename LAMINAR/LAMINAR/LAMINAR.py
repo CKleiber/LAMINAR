@@ -1,18 +1,14 @@
 import torch
 import numpy as np
 
-#from typing import Union
 from scipy.spatial import KDTree
 from scipy.sparse.csgraph import dijkstra
 from scipy.sparse import csr_matrix
-#from scipy.stats import shapiro, combine_pvalues    
-#from pingouin import multivariate_normality
-#from tqdm import tqdm
-#from LAMINAR.Flow.planarCNF import PlanarCNF, train_PlanarCNF
 from LAMINAR.Flow.OTFlow import Phi, train_OTFlow, integrate
 from LAMINAR.utils.gaussian2uniform import gaussian_to_sphere
 from LAMINAR.utils.geodesics import action, geodesic_length, geodesic_regression_function, geodesic_straight_line
 from LAMINAR.utils.dijkstra import dijkstra as dijkstra_laminar
+
 
 '''
 Implementation of the LAM algorithm using a normalizing flow to transform the data
@@ -112,9 +108,6 @@ class LAMINAR():
         additional_points_pushed = integrate(additional_points, self.net, [0, 1], nt=self.nt_val, stepper="rk4", alph=self.alph, intermediates=False).cpu().detach()[:, :self.d]
         additional_points_pushed = gaussian_to_sphere(additional_points_pushed)
 
-        #expanded_data_pushed = torch.concatenate([self.X_pushed, additional_points_pushed], dim=0)
-
-        #kdt = KDTree(expanded_data_pushed)
         kdt = KDTree(self.X_pushed)
         _, neighs = kdt.query(additional_points_pushed, k=self.k_neigh)
 
@@ -126,20 +119,9 @@ class LAMINAR():
         col_indices = neighs.flatten()
 
         # expanded graph is self.graph with additional elements
-
         expanded_graph = csr_matrix((distances.cpu().numpy().astype(np.float32), (row_indices + self.n, col_indices)), shape=(expanded_data.shape[0], expanded_data.shape[0]))
         expanded_graph = expanded_graph.tolil().astype(np.float32)
 
-        # print info of expanded graph
-        #print("Expanded graph shape: ", expanded_graph.shape)
-        #print("Expanded graph type: ", expanded_graph.dtype)
-        #
-        # same for graph
-        #print("Graph shape: ", self.graph.shape)
-        #print("Graph type: ", self.graph.dtype)
-
-
-        #expanded_graph[:self.n, :self.n] = self.graph
         self.graph = self.graph.tolil().astype(np.float32)
 
         block_size = 1024  # Adjust block size based on available memory
@@ -148,11 +130,6 @@ class LAMINAR():
                 # Calculate the actual block size for the current slice
                 i_end = min(i + block_size, self.n)
                 j_end = min(j + block_size, self.n)
-
-                # Print shapes for debugging
-                #print(f"Assigning block: [{i}:{i_end}, {j}:{j_end}]")
-                #print(f"Source shape: {self.graph[i:i_end, j:j_end].shape}")
-                #print(f"Target shape: {expanded_graph[i:i_end, j:j_end].shape}")
 
                 # Assign the block
                 expanded_graph[i:i_end, j:j_end] = self.graph[i:i_end, j:j_end]
@@ -223,7 +200,8 @@ class LAMINAR():
             else:
                 return self.graph, idx.tolist(), None, None
 
-    
+
+    # get closest points to start points
     def query(self, start, k=None):     # TODO expand to add point besides the data
         # start is an array of shape (m, d)
         # if shape is (d,) reshape to (1, d)
@@ -249,6 +227,7 @@ class LAMINAR():
             return idx, dists
 
     
+    # get approximate distance using the graph approximation
     def distance_approx(self, start, end, return_path=False):
         # expand graph by end and start points
         start = start.unsqueeze(0) if start.dim() == 1 else start
@@ -292,6 +271,7 @@ class LAMINAR():
                 return np.array(dists[0])
 
 
+    # get a smooth path between start and end points based on the approximation
     def distance_smooth(self, start, end, n, num_hidden=256, num_layers=5):
         _, path = self.distance_approx(start, end, return_path=True)
         

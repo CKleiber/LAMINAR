@@ -35,9 +35,7 @@ def vec_gammainc(a, x, num_steps=100):
     # Compute integrand t^(a-1) * exp(-t)
     a_expanded = a.unsqueeze(-1)  # Shape: (..., 1)
     integrand = (dt ** (a_expanded - 1)) * torch.exp(-dt)  # Shape: (..., num_steps)
-    #integrand[torch.isnan(integrand)] = 0  # Handle NaNs for edge cases (e.g., 0^(-1)).
     integrand = torch.where(torch.isnan(integrand), torch.zeros_like(integrand), integrand)  # Handle NaNs for edge cases (e.g., 0^(-1)).
-
 
     # Numerical integration using the trapezoidal rule
     trapezoid = (integrand[..., 1:] + integrand[..., :-1])  # Shape: (..., num_steps - 1)
@@ -68,7 +66,7 @@ def sphere_to_gaussian(X: torch.Tensor) -> torch.Tensor:
     # Compute the norm of each row
     norm = torch.norm(X, dim=1, keepdim=True)
 
-    # check if any norm is 1 and set to 0.9999 to avoid infinities
+    # check if any norm is rounded to 1 and set to 0.9999 to avoid infinities
     if torch.any(norm >= 1):
         norm_new = torch.where(norm >= 1, torch.tensor([0.9999]), norm)
 
@@ -82,7 +80,9 @@ def sphere_to_gaussian(X: torch.Tensor) -> torch.Tensor:
     X_gaussian = X / norm * inv_cdf
     return X_gaussian
 
+
 # vecotrized implementation of the jacobian of the transformation from a multivariate gaussian to a d-dimensional sphere
+# this is needed as a part of the full jacobian of the entire transformation
 def jacobian_gaussian_to_sphere(X: torch.Tensor) -> torch.Tensor: #at point x
     # Compute the jacobian of the transformation from a multivariate gaussian to a d-dimensional sphere
     n = X.shape[0]
@@ -106,5 +106,4 @@ def jacobian_gaussian_to_sphere(X: torch.Tensor) -> torch.Tensor: #at point x
     term3 = torch.einsum('bi,bij->bij', nex_unity, torch.eye(d, device=X.device).repeat(n, 1, 1))
 
     J = term1 + term2 + term3
-
     return J

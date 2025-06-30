@@ -2,6 +2,8 @@ import torch
 from torch.func import vmap
 import os
 
+
+# christoffel symbols are used to calculate the geodesic equation, which isn't used in the current implementation
 def christoffel_symbol(x, metric_func, eps=1e-6, numeric_diff=True):
     '''
     Calculate the christoffel symbols at the locations x (shape: n, dim) for the metric given by metric_func
@@ -13,13 +15,16 @@ def christoffel_symbol(x, metric_func, eps=1e-6, numeric_diff=True):
 
     # make input (shape: n, dim+1, dim) for metric call, which calls for every x and a small deviation in every direction for every x
     if numeric_diff:
+
+        # numeric differentiation will become very imprecise if eps is too large or too small. Very small changes in the metric function are not captured well.
+
         x_in = x.unsqueeze(1).repeat(1, 2*dim+1, 1)
+
         # add and subtract small deviation in every direction
         x_in[:, 1:dim+1] += torch.eye(dim, device=device).unsqueeze(0) * eps
         x_in[:, dim+1:] -= torch.eye(dim, device=device).unsqueeze(0) * eps
 
         # calculate metric
-        #print(x_in.shape)
         g = metric_func(x_in)
 
         # get gradients of g wrt x (shape: n, dim, dim, dim)
@@ -31,6 +36,9 @@ def christoffel_symbol(x, metric_func, eps=1e-6, numeric_diff=True):
         g = g[:, 0] # only keep the metric at the point
 
     else:
+
+        # using torch.func.jacrev to calculate the jacobian of the metric function works better in many cases, but for some functions which are not supported by jacrev, this will fail.
+
         x_in = x
         g = metric_func(x_in)
 
@@ -54,6 +62,8 @@ def christoffel_symbol(x, metric_func, eps=1e-6, numeric_diff=True):
 
     return christoffel
 
+
+# calculate the total deviation from the geodesic equation. This is not used in the current implementation. Will maybe be imprecise due to the christoffel symbol calculations above.
 def geodesic_equation(path, metric_func, eps=1e-6, numeric_diff=True):
 
     # velocity at each point
@@ -73,9 +83,9 @@ def geodesic_equation(path, metric_func, eps=1e-6, numeric_diff=True):
 
     return tot_deviation
 
-
+# Given a start and end point, this function calculates the length fow a batch of paths defined by the points in between.
 def geodesic_length(points, start, end, metric_func):
-    # points is a tesor of nex-by-steps-by-d
+    # points is a tensor of nex-by-steps-by-d
     # allow calculations of multiple paths with points as intermediate points, while start and end are fixed
     n_paths = points.shape[0]
 
@@ -91,15 +101,15 @@ def geodesic_length(points, start, end, metric_func):
 
     ds_squared = torch.einsum('abi,abij,abj->ab', delta_x, g, delta_x)
 
-    g_det = torch.linalg.det(g)
-    ds_squared = ds_squared * g_det**(-1/dim)
+    #g_det = torch.linalg.det(g)
+    #ds_squared = ds_squared * g_det**(-1/dim)
 
     total_length = torch.sqrt(ds_squared).sum(dim=1)
 
     variance = torch.var(torch.sqrt(ds_squared))
     return total_length, variance
 
-
+# this does the same as the function above, just it assumes a euclidean straight line as a path between start and end
 def geodesic_straight_line(starts, ends, metric_func, inbetween = 10):
     # starts shape (n, d)
     # ends shape (n, d)
@@ -117,14 +127,15 @@ def geodesic_straight_line(starts, ends, metric_func, inbetween = 10):
 
     ds_squared = torch.einsum('abi,abij,abj->ab', delta_x, g, delta_x)
 
-    g_det = torch.linalg.det(g)
-    ds_squared = ds_squared * g_det**(-1/d)
+    #g_det = torch.linalg.det(g)
+    #ds_squared = ds_squared * g_det**(-1/d)
 
     total_length = torch.sqrt(ds_squared).sum(dim=1)
 
     return total_length
 
 
+# the action is the quantity used to smoothen the geodesics. 
 def action(path, metric_function):
     v = (path[2:] - path[:-2])/2
     v_start = (path[1] - path[0])
@@ -142,8 +153,10 @@ def action(path, metric_function):
 
 
 # returns a parameterized function taking stat point, end point and time, and returns the point a a time
-# gamma_eta(x, y, t) = (1-t)*x + t*y + t * (1-t) * phi_eta(x, y, t)
+# gamma_eta(x, y, t) = (1-t)*x + t*y + t * (1-t) * phi_eta(x, y, t) (compare Gruffaz et. al. 2025)
 # phi is a neural network
+
+# NOTE: This can definitely be improved. This is rather a proof of concept than a final implementation.
 
 class geodesic_regression_function(torch.nn.Module):
     def __init__(self, dim, num_hidden=10, num_layers=2):
@@ -174,9 +187,10 @@ class geodesic_regression_function(torch.nn.Module):
         return ((1-t)*x + t*y + t*(1-t)*phi)
     
     def initial_fit(self, points):
+        # get an initial fit to the approximation by using a reconstruction loss
+        
         self.x = x = points[0]
         self.y = y = points[-1]
-
 
         t = torch.linspace(0, 1, len(points)).reshape(-1, 1)[1:-1]  # shape n_steps, 1
 
@@ -194,7 +208,7 @@ class geodesic_regression_function(torch.nn.Module):
         best_loss = 1e10
         counter = 0
 
-        for i in range(25000):
+        for i in range(25000): # 25k is random, could be optimised
             optim.zero_grad()
             pred = self.forward(x, y, t)
             loss = loss_fn(pred, func_target) # per point
@@ -202,7 +216,6 @@ class geodesic_regression_function(torch.nn.Module):
             optim.step()
 
             current_loss = loss.item()
-            #print(current_loss)
 
             if current_loss < best_loss:
                 best_loss = current_loss
@@ -210,11 +223,11 @@ class geodesic_regression_function(torch.nn.Module):
             elif current_loss > best_loss:
                 counter += 1
                 if counter > 100:
-                    # reduce learning rate to 10%
+                    # reduce learning rate to 10% 
                     
                     for param_group in optim.param_groups:
                         if param_group['lr'] > 1e-8:
-                            param_group['lr'] *= 0.1
+                            param_group['lr'] *= 0.1     # 10% is random too, could also be optimised
                             print(f'Learning rate reduced to {param_group["lr"]}')
                             counter = 0
 
@@ -229,6 +242,8 @@ class geodesic_regression_function(torch.nn.Module):
         self.phi.eval()
 
     def fit_to_geodesic(self, metric_func):
+        # use action as loss function to fit the geodesic regression function to the geodesic equation
+
         t = torch.linspace(0, 1, 100).reshape(-1, 1)
         optim = torch.optim.Adam(self.parameters(), lr=1e-5)
 
@@ -252,7 +267,7 @@ class geodesic_regression_function(torch.nn.Module):
             loss = action(pred, metric_func) 
             
             current_loss = loss.item()
-            #print(current_loss)
+            
             l_list.append(current_loss)
 
             if current_loss < best_loss:
@@ -283,10 +298,6 @@ class geodesic_regression_function(torch.nn.Module):
         # delete best.pt file
         os.remove('best.pt')
         self.phi.eval()
-
-        #print(self.phi.state_dict())
-        #print(best_phi)
-
 
         with torch.no_grad():  # Ensure no gradients are computed
             pred = self.forward(self.x, self.y, t)

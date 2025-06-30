@@ -7,11 +7,12 @@ import math
 from scipy.spatial import KDTree
 from scipy.sparse.csgraph import dijkstra
 
-
 from LAMINAR.utils.gaussian2uniform import gaussian_to_sphere, jacobian_gaussian_to_sphere
 
 from torch.func import vmap
 
+# most of this code is based on Onken et. al. 2025: "OT-Flow: Fast and Accurate Continuous Normalizing Flows via Optimal Transport" and their repository in https://github.com/EmoryMLIP/OT-Flow
+# the code has been adjusted and expanded for use in LAMINAR
 
 # define activation functions
 def antiderivTanh(x):
@@ -22,7 +23,6 @@ def derivTanh(x):
 
 
 # define a ResNet module
-
 class ResNet(nn.Module):
     def __init__(self, d: int, m: int, nTh: int = 2):
         """
@@ -334,15 +334,13 @@ class Phi(nn.Module):
         return grad.t(), trH + torch.trace(symA[0:d,0:d])
         # indexed version of: return grad.t() ,  trH + torch.trace( torch.mm( E.t() , torch.mm(  symA , E) ) )
     
+    # expand the previous code with calculating the full Hessian of Phi to get the jacobian of the transformation
     def fullHessian(self, x, steps=1):
         # Calculate Hessian of Phi for different time steps specified by steps
         n_steps = torch.linspace(0, 1, steps + 1).reshape(-1, 1)[:-1].to(self.device)
     
         # Integrate over time in steps
-        #alph = [1.0, 100.0, 5.0] # not needed here?
-        #print(x.shape)
         zFull = integrate(x, self, [0, 1], nt=steps, stepper="rk4", intermediates=True)[:, :self.d, :-1].to(self.device)
-        #zFull = torch.randn(x.shape[0], x.shape[1], steps, device=self.device)
 
         # Prepare data for batch processing
         dim = x.shape[1]
@@ -354,9 +352,6 @@ class Phi(nn.Module):
             zFull.transpose(1, 2).reshape(batch_size * time_dim, self.d),
             n_steps.repeat(batch_size, 1)
         ], dim=1).to(self.device)
-    
-        # x_in requires_grad
-        #x_in = x_in.clone().requires_grad_(True)
 
         # Define function for which to compute the Hessian
         def func(batch_x_in):
@@ -381,11 +376,18 @@ class Phi(nn.Module):
         metric_t = torch.einsum('bji,bjk->bik', full_hessians, full_hessians)
 
         # add a small unit matrix to ensure numerical stability
-
         metric_t = metric_t + 1e-6 * torch.eye(dim, device=self.device).unsqueeze(0)
+        
+        # compute the determinant of the metric tensor
+        # and expand it to the same shape as the metric tensor
+        g_det = torch.linalg.det(metric_t)
+        g_det = g_det.unsqueeze(-1).unsqueeze(-1).expand_as(metric_t)
+         # scale the metric tensor by the determinant
+        metric_t = metric_t * g_det**(-1/dim)
 
         return metric_t.detach() #, hess, unif
     
+    # handy function to handle shapes and batch sizes
     def metric_tensor(self, x):
         # flatten x and reshape into original shape
         x_dims = torch.tensor(x.shape)
@@ -526,4 +528,3 @@ def train_OTFlow(net, optimizer, X_train, X_val, epochs = 1500, nt=8, nt_val=8, 
     net.eval()
 
     return loss_hist
-
