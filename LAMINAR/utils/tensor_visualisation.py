@@ -62,8 +62,8 @@ def get_cov_colours(
         eigenvalues, eigenvectors = np.linalg.eig(metric_tensor[point])
         
         # get angle
-        eig_idx = np.argmin(eigenvalues) #np.argmax(eigenvalues)  
-    
+        eig_idx = np.argmin(eigenvalues)
+
         vec = eigenvectors[:, eig_idx]
 
         angle = np.arctan2(vec[1], vec[0])
@@ -74,10 +74,7 @@ def get_cov_colours(
             angle += 360
 
         colour_angle = (angle % 180) * 2
-
-        #colour_angle += 90 # to show the angle of the minor axis, i.e. the direction paths would travel
         H = colour_angle
-
 
         a = metric_tensor[point][0][0]
         b = metric_tensor[point][0][1]
@@ -87,20 +84,6 @@ def get_cov_colours(
         e = np.sqrt((2*np.sqrt((a-c)**2 + 4*b**2))/((a+c) + np.sqrt((a-c)**2 + 4*b**2)))
         
         S = e**4
-        #large_eig_value = eigenvalues.max()
-        #small_eig_value = eigenvalues.min()
-#
-        #scale_semi_major = np.sqrt(large_eig_value)
-        #scale_semi_minor = np.sqrt(small_eig_value)
-
-
-
-        # get the ratio
-        #ratio = scale_semi_major / scale_semi_minor
-        
-        # ratio of 1 means no saturation i.e. S = 0 (circle)
-        # ratio of inf means full saturation i.e. S = 1 (very stretched ellipse)
-        #S = 1 - (1/ratio)**0.43
         
         R, G, B = hsv_to_rgb(H, S, 1)
         colours.append((R, G, B))

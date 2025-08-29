@@ -22,8 +22,6 @@ class LAMINAR():
                  nTh = 3,
                  m = 32,
                  lr = 0.1,
-                 drop_freq = 100,
-                 lr_drop = 2,
                  k_neigh = 10,
                  epochs = 1500,
                  batch_size = 1024,
@@ -39,8 +37,6 @@ class LAMINAR():
         self.nTh = nTh
         self.m = m
         self.lr = lr
-        self.drop_freq = drop_freq
-        self.lr_drop = lr_drop
         self.k_neigh = k_neigh 
         self.epochs = epochs
 
@@ -60,7 +56,7 @@ class LAMINAR():
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
 
         # train the model
-        self.loss_hist = train_OTFlow(self.net, self.optimizer, self.data_train, self.data_val, self.epochs, self.nt, self.nt_val, self.drop_freq, self.lr_drop, self.batch_size)
+        self.loss_hist = train_OTFlow(self.net, self.optimizer, self.data_train, self.data_val, self.epochs, self.nt, self.nt_val, self.batch_size)
 
         # set up the graph
         self.set_up_graph()
@@ -104,7 +100,6 @@ class LAMINAR():
         # additional_points is an array of shape (m, d) of points which temporarily need to be added to the graph
         # returns the expanded graph, the distance matrix and the predecessors
 
-        #additional_points = additional_points.reshape(-1, self.d)
         expanded_data = torch.cat([self.data, additional_points], dim=0)
         additional_points_pushed = integrate(additional_points, self.net, [0, 1], nt=self.nt_val, stepper="rk4", alph=self.alph, intermediates=False).cpu().detach()[:, :self.d]
         additional_points_pushed = gaussian_to_sphere(additional_points_pushed)
@@ -125,7 +120,7 @@ class LAMINAR():
 
         self.graph = self.graph.tolil().astype(np.float32)
 
-        block_size = 1024  # Adjust block size based on available memory
+        block_size = 1024  # Adjust block size based on available memory, potentially a user-definable parameter
         for i in range(0, self.n, block_size):
             for j in range(0, self.n, block_size):
                 # Calculate the actual block size for the current slice
@@ -254,7 +249,6 @@ class LAMINAR():
                 path_idx = torch.tensor(path_idx).flip(0)
                 path = all_points[path_idx]
 
-                #dist = geodesic_length(path.reshape(1, path.shape[0], self.d), start, end, self.net.metric_tensor)
                 dist = dist_matrix[start_idx, end_idx]
 
                 return dist, path

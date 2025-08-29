@@ -81,7 +81,7 @@ def sphere_to_gaussian(X: torch.Tensor) -> torch.Tensor:
     return X_gaussian
 
 
-# vecotrized implementation of the jacobian of the transformation from a multivariate gaussian to a d-dimensional sphere
+# vectorised implementation of the jacobian of the transformation from a multivariate gaussian to a d-dimensional sphere
 # this is needed as a part of the full jacobian of the entire transformation
 def jacobian_gaussian_to_sphere(X: torch.Tensor) -> torch.Tensor: #at point x
     # Compute the jacobian of the transformation from a multivariate gaussian to a d-dimensional sphere

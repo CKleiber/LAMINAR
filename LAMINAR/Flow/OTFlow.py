@@ -4,10 +4,7 @@ import matplotlib.pyplot as plt
 import copy
 import math
 
-from scipy.spatial import KDTree
-from scipy.sparse.csgraph import dijkstra
-
-from LAMINAR.utils.gaussian2uniform import gaussian_to_sphere, jacobian_gaussian_to_sphere
+from LAMINAR.utils.gaussian2uniform import jacobian_gaussian_to_sphere
 
 from torch.func import vmap
 
@@ -163,9 +160,6 @@ def integrate(x, net, tspan , nt, stepper="rk4", alph =[1.0,1.0,1.0], intermedia
     tk = tspan[0]
 
     if intermediates: # save the intermediate values as well
-        #zFull = torch.zeros(*z.shape, nt+1, device=device, dtype=x.dtype) # make tensor of size z.shape[0], z.shape[1], nt
-        #zFull[:,:,0] = z
-        #zFull = torch.cat((z.unsqueeze(-1), zFull[:,:,1:]), dim=-1)
         with torch.no_grad():
             zFull = z.clone().reshape(z.shape[0], z.shape[1], 1)
             if stepper == 'rk4':
@@ -361,7 +355,6 @@ class Phi(nn.Module):
     
         # Compute the Hessians function for all arguments but the last
         hess = vmap(torch.func.hessian(func))(x_in)
-        #hess = torch.randn(batch_size, time_dim, self.d+1, self.d+1, device=self.device)
         hess = hess.reshape(batch_size, time_dim, self.d+1, self.d+1)
     
         # Extract spatial dimensions and time steps
@@ -384,10 +377,11 @@ class Phi(nn.Module):
         # and expand it to the same shape as the metric tensor
         g_det = torch.linalg.det(metric_t)
         g_det = g_det.unsqueeze(-1).unsqueeze(-1).expand_as(metric_t)
-         # scale the metric tensor by the determinant
+
+        # scale the metric tensor by the determinant
         metric_t = metric_t * g_det**(-1/dim)
 
-        return metric_t.detach() #, hess, unif
+        return metric_t.detach() 
     
     # handy function to handle shapes and batch sizes
     def metric_tensor(self, x):
@@ -398,7 +392,7 @@ class Phi(nn.Module):
         #x = x.flatten(0, 1)
         x = x.reshape(-1, x.shape[-1])
 
-        # if x is too large, split up in batches of size 1024
+        # if x is too large, split up in batches of size 1024; this number is potentially adjustable as a parameter
         if x.shape[0] > 1024:
             num_batches = int(x.shape[0] / self.batch_size) + 1
 
@@ -476,7 +470,7 @@ def compute_loss(net, x, nt):
     return Jc #, cs
 
 
-def train_OTFlow(net, optimizer, X_train, X_val, epochs = 1500, nt=8, nt_val=8, drop_freq=100, lr_drop=2, batch_size=1024):
+def train_OTFlow(net, optimizer, X_train, X_val, epochs = 1500, nt=8, nt_val=8, batch_size=1024):
     net.train()
 
     loss_hist = {
@@ -522,10 +516,6 @@ def train_OTFlow(net, optimizer, X_train, X_val, epochs = 1500, nt=8, nt_val=8, 
 
             loss_hist['train'].append(loss)
             loss_hist['val'].append(Jcval.item())
-
-        if itr % drop_freq == 0:
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = param_group['lr'] / lr_drop
 
     net.eval()
 

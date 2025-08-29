@@ -83,6 +83,7 @@ def geodesic_equation(path, metric_func, eps=1e-6, numeric_diff=True):
 
     return tot_deviation
 
+
 # Given a start and end point, this function calculates the length fow a batch of paths defined by the points in between.
 def geodesic_length(points, start, end, metric_func):
     # points is a tensor of nex-by-steps-by-d
@@ -101,9 +102,6 @@ def geodesic_length(points, start, end, metric_func):
 
     ds_squared = torch.einsum('abi,abij,abj->ab', delta_x, g, delta_x)
 
-    #g_det = torch.linalg.det(g)
-    #ds_squared = ds_squared * g_det**(-1/dim)
-
     total_length = torch.sqrt(ds_squared).sum(dim=1)
 
     variance = torch.var(torch.sqrt(ds_squared))
@@ -111,8 +109,8 @@ def geodesic_length(points, start, end, metric_func):
 
 # this does the same as the function above, just it assumes a euclidean straight line as a path between start and end
 def geodesic_straight_line(starts, ends, metric_func, inbetween = 10):
-    # starts shape (n, d)
-    # ends shape (n, d)
+    # start shape (n, d)
+    # end shape (n, d)
 
     n = starts.shape[0]
     d = starts.shape[1]
@@ -224,10 +222,9 @@ class geodesic_regression_function(torch.nn.Module):
                 counter += 1
                 if counter > 100:
                     # reduce learning rate to 10% 
-                    
                     for param_group in optim.param_groups:
                         if param_group['lr'] > 1e-8:
-                            param_group['lr'] *= 0.1     # 10% is random too, could also be optimised
+                            param_group['lr'] *= 0.1    # 10% is random too, could also be optimised
                             print(f'Learning rate reduced to {param_group["lr"]}')
                             counter = 0
 
