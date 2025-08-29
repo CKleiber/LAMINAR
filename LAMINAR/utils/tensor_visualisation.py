@@ -60,16 +60,10 @@ def get_cov_colours(
     for point in range(len(data)):
         # get the eigenvalues and eigenvectors of the metric tensor at the point
         eigenvalues, eigenvectors = np.linalg.eig(metric_tensor[point])
-
-        # volume of the ellipse
-        #volume = np.sqrt(np.prod(eigenvalues))
-
-        # scale it so a large value goes asymptotically to 1
-        # can also be used for visualisation:
-        #V = 1 - np.exp(-volume)
         
         # get angle
-        eig_idx = np.argmax(eigenvalues)
+        eig_idx = np.argmin(eigenvalues) #np.argmax(eigenvalues)  
+    
         vec = eigenvectors[:, eig_idx]
 
         angle = np.arctan2(vec[1], vec[0])
@@ -80,14 +74,33 @@ def get_cov_colours(
             angle += 360
 
         colour_angle = (angle % 180) * 2
+
+        #colour_angle += 90 # to show the angle of the minor axis, i.e. the direction paths would travel
         H = colour_angle
 
+
+        a = metric_tensor[point][0][0]
+        b = metric_tensor[point][0][1]
+        c = metric_tensor[point][1][1]
+
+        # eccentricity
+        e = np.sqrt((2*np.sqrt((a-c)**2 + 4*b**2))/((a+c) + np.sqrt((a-c)**2 + 4*b**2)))
+        
+        S = e**4
+        #large_eig_value = eigenvalues.max()
+        #small_eig_value = eigenvalues.min()
+#
+        #scale_semi_major = np.sqrt(large_eig_value)
+        #scale_semi_minor = np.sqrt(small_eig_value)
+
+
+
         # get the ratio
-        ratio = eigenvalues.max() / (eigenvalues.min())
+        #ratio = scale_semi_major / scale_semi_minor
         
         # ratio of 1 means no saturation i.e. S = 0 (circle)
         # ratio of inf means full saturation i.e. S = 1 (very stretched ellipse)
-        S = 1 - (1/ratio)**0.25
+        #S = 1 - (1/ratio)**0.43
         
         R, G, B = hsv_to_rgb(H, S, 1)
         colours.append((R, G, B))

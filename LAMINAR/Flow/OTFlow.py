@@ -199,7 +199,7 @@ def integrate(x, net, tspan , nt, stepper="rk4", alph =[1.0,1.0,1.0], intermedia
 
 
 class Phi(nn.Module):
-    def __init__(self, nTh, m, d, r=10, alph=[1.0] * 5, device=torch.device('cpu')):
+    def __init__(self, nTh, m, d, r=10, alph=[1.0] * 5, batch_size=1024, device=torch.device('cpu')):
         """
             neural network approximating Phi (see Eq. (10) in OT paper)
 
@@ -220,6 +220,8 @@ class Phi(nn.Module):
         self.nTh  = nTh
         self.d    = d
         self.alph = alph
+
+        self.batch_size = batch_size
 
         r = min(r,d+1)
 
@@ -366,7 +368,7 @@ class Phi(nn.Module):
         hess = hess[:, :, :self.d, :self.d]
     
         # Average over time steps
-        hess = hess.mean(dim=1).reshape(-1, dim, dim)
+        hess = -1 * hess.mean(dim=1).reshape(-1, dim, dim)
 
         transformed = zFull[:, :dim]
 
@@ -398,13 +400,13 @@ class Phi(nn.Module):
 
         # if x is too large, split up in batches of size 1024
         if x.shape[0] > 1024:
-            num_batches = int(x.shape[0] / 1024) + 1
-            batch_size = int(x.shape[0] / num_batches)
+            num_batches = int(x.shape[0] / self.batch_size) + 1
+
             hess = torch.zeros(x.shape[0], x.shape[1], x.shape[1], device=self.device)
 
             for i in range(num_batches):
-                start_idx = i * batch_size
-                end_idx = min((i + 1) * batch_size, x.shape[0])
+                start_idx = i * self.batch_size
+                end_idx = min((i + 1) * self.batch_size, x.shape[0])
                 hess[start_idx:end_idx] = self.fullHessian(x[start_idx:end_idx], 8)
 
             hess = hess.reshape(-1, x.shape[1], x.shape[1])

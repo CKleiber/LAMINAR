@@ -27,6 +27,7 @@ class LAMINAR():
                  k_neigh = 10,
                  epochs = 1500,
                  batch_size = 1024,
+                 data_split = 0.8,
                  save_distance_matrix = False):
         
         self.device = data.device
@@ -51,8 +52,8 @@ class LAMINAR():
         self.n = self.data.shape[0]
 
         # split the data into training and validation
-        self.data_train = self.data[:int(self.n*0.8)]
-        self.data_val = self.data[int(self.n*0.8):]
+        self.data_train = self.data[:int(self.n*data_split)]
+        self.data_val = self.data[int(self.n*data_split):]
 
         # initialize the normalizing flow
         self.net = Phi(self.nTh, self.m, self.d, alph=self.alph, device=self.device)

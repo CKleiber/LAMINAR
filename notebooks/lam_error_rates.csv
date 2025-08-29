@@ -1,0 +1,5 @@
+Dataset,Iteration 1,Iteration 2,Iteration 3,Iteration 4,Iteration 5,Iteration 6,Iteration 7,Iteration 8,Iteration 9,Iteration 10,Iteration 11,Iteration 12,Iteration 13,Iteration 14,Iteration 15,Iteration 16,Iteration 17,Iteration 18,Iteration 19,Iteration 20
+Moons,0.114,0.06,0.094,0.096,0.073,0.097,0.058,0.077,0.079,0.099,0.092,0.062,0.058,0.042,0.075,0.055,0.074,0.069,0.09,0.073
+Four Gaussians,0.332,0.043,0.035,0.378,0.05,0.044,0.046,0.625,0.342,0.357,0.039,0.361,0.343,0.038,0.351,0.045,0.053,0.047,0.045,0.056
+Streched Gaussians,0.007,0.498,0.007,0.494,0.006,0.009,0.005,0.007,0.007,0.006,0.008,0.432,0.009,0.061,0.007,0.474,0.006,0.007,0.01,0.008
+Combined Structure,0.225,0.178,0.148,0.368,0.381,0.375,0.17,0.033,0.418,0.162,0.192,0.384,0.026,0.374,0.19,0.154,0.152,0.201,0.373,0.192
